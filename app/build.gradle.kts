@@ -3,13 +3,14 @@ plugins {
   alias(libs.plugins.compose.compiler)
   alias(libs.plugins.kotlin.serialization)
   alias(libs.plugins.ksp)
+  alias(libs.plugins.google.services)
 }
 
 android {
-    namespace = "com.example.axpense"
+    namespace = "com.apex.axpense"
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.example.axpense"
+        applicationId = "com.apex.axpense"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
@@ -100,4 +101,9 @@ dependencies {
   implementation(libs.androidx.room.runtime)
   ksp(libs.androidx.room.compiler)
   implementation(libs.androidx.room.ktx)
+
+  // Firebase
+  implementation(platform(libs.firebase.bom))
+  implementation(libs.firebase.auth)
+  implementation(libs.firebase.firestore)
 }
