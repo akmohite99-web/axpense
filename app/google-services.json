@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "485564304589",
+    "project_id": "axpense-be19e",
+    "storage_bucket": "axpense-be19e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:485564304589:android:d27016401beaddb5e22d84",
+        "android_client_info": {
+          "package_name": "com.apex.axpense"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAwl-5LbJ9PMtpIv_U_UuYh90RewyV-RsU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
