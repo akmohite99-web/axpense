@@ -9,6 +9,7 @@ data class Expense(
     val amount: Double,
     val description: String,
     val category: String,
+    val subCategory: String? = null,
     val timestamp: Long,
     val sourceApp: String, // e.g., "com.google.android.apps.messaging", "com.google.android.gm"
     val userId: String = "" // Added for Cloud Sync
