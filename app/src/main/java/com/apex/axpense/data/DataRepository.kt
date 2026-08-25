@@ -6,12 +6,17 @@ import com.google.firebase.firestore.toObjects
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.tasks.await
 
-class DataRepository(private val dao: ExpenseDao) {
+class DataRepository(
+    private val expenseDao: ExpenseDao,
+    private val categoryDao: CategoryDao
+) {
     private val firestore = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
 
-    val allExpenses: Flow<List<Expense>> = dao.getAllExpenses()
-    val totalSpent: Flow<Double?> = dao.getTotalSpent()
+    val allExpenses: Flow<List<Expense>> = expenseDao.getAllExpenses()
+    val totalSpent: Flow<Double?> = expenseDao.getTotalSpent()
+    
+    val allCategories: Flow<List<Category>> = categoryDao.getAllCategories()
 
     suspend fun addExpense(expense: Expense) {
         val currentUser = auth.currentUser
@@ -22,7 +27,7 @@ class DataRepository(private val dao: ExpenseDao) {
         }
         
         // Save locally
-        dao.insert(expenseWithUser)
+        expenseDao.insert(expenseWithUser)
         
         // Sync to cloud if user is logged in
         if (currentUser != null) {
@@ -33,7 +38,30 @@ class DataRepository(private val dao: ExpenseDao) {
                     .await()
             } catch (e: Exception) {
                 // If cloud sync fails, it will just stay local for now
-                // In a production app, you'd implement a sync worker
+            }
+        }
+    }
+
+    suspend fun addCategory(category: Category) {
+        val currentUser = auth.currentUser
+        val categoryWithUser = if (currentUser != null) {
+            category.copy(userId = currentUser.uid)
+        } else {
+            category
+        }
+        
+        // Save locally
+        categoryDao.insert(categoryWithUser)
+        
+        // Sync to cloud if user is logged in
+        if (currentUser != null) {
+            try {
+                firestore.collection("categories")
+                    .document()
+                    .set(categoryWithUser)
+                    .await()
+            } catch (e: Exception) {
+                // Ignore sync errors
             }
         }
     }
@@ -41,14 +69,23 @@ class DataRepository(private val dao: ExpenseDao) {
     suspend fun syncFromCloud() {
         val currentUser = auth.currentUser ?: return
         try {
-            val snapshot = firestore.collection("expenses")
+            // Sync expenses
+            val expenseSnapshot = firestore.collection("expenses")
                 .whereEqualTo("userId", currentUser.uid)
                 .get()
                 .await()
             
-            val cloudExpenses = snapshot.toObjects<Expense>()
-            // Update local DB with cloud data
-            cloudExpenses.forEach { dao.insert(it) }
+            val cloudExpenses = expenseSnapshot.toObjects<Expense>()
+            cloudExpenses.forEach { expenseDao.insert(it) }
+
+            // Sync categories
+            val categorySnapshot = firestore.collection("categories")
+                .whereEqualTo("userId", currentUser.uid)
+                .get()
+                .await()
+            
+            val cloudCategories = categorySnapshot.toObjects<Category>()
+            cloudCategories.forEach { categoryDao.insert(it) }
         } catch (e: Exception) {
             e.printStackTrace()
         }

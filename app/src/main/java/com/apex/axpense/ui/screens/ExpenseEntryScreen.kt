@@ -19,12 +19,34 @@ fun ExpenseEntryScreen(
     initialDesc: String? = null,
     onNavigateBack: () -> Unit
 ) {
+    val allCategories by viewModel.categories.collectAsState()
+    
+    val mainCategories = remember(allCategories) {
+        val cats = allCategories.filter { it.parentCategory == null }.map { it.name }
+        if (cats.isEmpty()) listOf("Food", "Transport", "Shopping", "Entertainment", "Bills", "Other") else cats
+    }
+    
     var amount by remember { mutableStateOf(initialAmount?.toString() ?: "") }
     var description by remember { mutableStateOf(initialDesc ?: "") }
-    var category by remember { mutableStateOf("Food") }
-    var expanded by remember { mutableStateOf(false) }
+    var category by remember { mutableStateOf(mainCategories.firstOrNull() ?: "Food") }
+    
+    val subCategories = remember(allCategories, category) {
+        allCategories.filter { it.parentCategory == category }.map { it.name }
+    }
+    
+    var subCategory by remember { mutableStateOf<String?>(null) }
+    
+    // Reset subCategory when main category changes
+    LaunchedEffect(category) {
+        subCategory = null
+    }
 
-    val categories = listOf("Food", "Transport", "Shopping", "Entertainment", "Bills", "Other")
+    var expandedCategory by remember { mutableStateOf(false) }
+    var expandedSubCategory by remember { mutableStateOf(false) }
+    
+    var showAddCategoryDialog by remember { mutableStateOf(false) }
+    var showAddSubCategoryDialog by remember { mutableStateOf(false) }
+    var newCategoryName by remember { mutableStateOf("") }
 
     Scaffold(
         topBar = {
@@ -53,32 +75,86 @@ fun ExpenseEntryScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            // Main Category Dropdown
             ExposedDropdownMenuBox(
-                expanded = expanded,
-                onExpandedChange = { expanded = !expanded }
+                expanded = expandedCategory,
+                onExpandedChange = { expandedCategory = !expandedCategory }
             ) {
                 OutlinedTextField(
                     value = category,
                     onValueChange = {},
                     readOnly = true,
                     label = { Text("Category") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedCategory) },
                     colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
                     modifier = Modifier.menuAnchor().fillMaxWidth()
                 )
                 ExposedDropdownMenu(
-                    expanded = expanded,
-                    onDismissRequest = { expanded = false }
+                    expanded = expandedCategory,
+                    onDismissRequest = { expandedCategory = false }
                 ) {
-                    categories.forEach { selectionOption ->
+                    mainCategories.forEach { selectionOption ->
                         DropdownMenuItem(
                             text = { Text(selectionOption) },
                             onClick = {
                                 category = selectionOption
-                                expanded = false
+                                expandedCategory = false
                             }
                         )
                     }
+                    Divider()
+                    DropdownMenuItem(
+                        text = { Text("➕ Add New Category...") },
+                        onClick = {
+                            expandedCategory = false
+                            showAddCategoryDialog = true
+                        }
+                    )
+                }
+            }
+            
+            // Sub Category Dropdown
+            ExposedDropdownMenuBox(
+                expanded = expandedSubCategory,
+                onExpandedChange = { expandedSubCategory = !expandedSubCategory }
+            ) {
+                OutlinedTextField(
+                    value = subCategory ?: "None",
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Sub-Category (Optional)") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedSubCategory) },
+                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                    modifier = Modifier.menuAnchor().fillMaxWidth()
+                )
+                ExposedDropdownMenu(
+                    expanded = expandedSubCategory,
+                    onDismissRequest = { expandedSubCategory = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("None") },
+                        onClick = {
+                            subCategory = null
+                            expandedSubCategory = false
+                        }
+                    )
+                    subCategories.forEach { selectionOption ->
+                        DropdownMenuItem(
+                            text = { Text(selectionOption) },
+                            onClick = {
+                                subCategory = selectionOption
+                                expandedSubCategory = false
+                            }
+                        )
+                    }
+                    Divider()
+                    DropdownMenuItem(
+                        text = { Text("➕ Add New Sub-Category...") },
+                        onClick = {
+                            expandedSubCategory = false
+                            showAddSubCategoryDialog = true
+                        }
+                    )
                 }
             }
 
@@ -93,7 +169,7 @@ fun ExpenseEntryScreen(
                 onClick = {
                     val parsedAmount = amount.toDoubleOrNull()
                     if (parsedAmount != null && parsedAmount > 0) {
-                        viewModel.addExpense(parsedAmount, category, description)
+                        viewModel.addExpense(parsedAmount, category, subCategory, description)
                         onNavigateBack()
                     }
                 },
@@ -101,6 +177,70 @@ fun ExpenseEntryScreen(
             ) {
                 Text("Save Expense")
             }
+        }
+        
+        // Add Category Dialog
+        if (showAddCategoryDialog) {
+            AlertDialog(
+                onDismissRequest = { showAddCategoryDialog = false; newCategoryName = "" },
+                title = { Text("Add New Category") },
+                text = {
+                    OutlinedTextField(
+                        value = newCategoryName,
+                        onValueChange = { newCategoryName = it },
+                        label = { Text("Category Name") }
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        if (newCategoryName.isNotBlank()) {
+                            viewModel.addCategory(newCategoryName, null)
+                            category = newCategoryName
+                        }
+                        showAddCategoryDialog = false
+                        newCategoryName = ""
+                    }) {
+                        Text("Add")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showAddCategoryDialog = false; newCategoryName = "" }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+        
+        // Add Sub-Category Dialog
+        if (showAddSubCategoryDialog) {
+            AlertDialog(
+                onDismissRequest = { showAddSubCategoryDialog = false; newCategoryName = "" },
+                title = { Text("Add Sub-Category under '$category'") },
+                text = {
+                    OutlinedTextField(
+                        value = newCategoryName,
+                        onValueChange = { newCategoryName = it },
+                        label = { Text("Sub-Category Name") }
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        if (newCategoryName.isNotBlank()) {
+                            viewModel.addCategory(newCategoryName, category)
+                            subCategory = newCategoryName
+                        }
+                        showAddSubCategoryDialog = false
+                        newCategoryName = ""
+                    }) {
+                        Text("Add")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showAddSubCategoryDialog = false; newCategoryName = "" }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
     }
 }
