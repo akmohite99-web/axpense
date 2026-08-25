@@ -116,6 +116,38 @@ class DataRepository(
         }
     }
 
+    suspend fun backupAllData() {
+        val currentUser = auth.currentUser ?: return
+        try {
+            // Fetch all local data
+            val localExpenses = expenseDao.getAllExpensesOnce()
+            val localCategories = categoryDao.getAllCategoriesOnce()
+
+            // Use batch write for atomicity
+            val batch = firestore.batch()
+
+            // Clear existing collections for the user (optional – here we overwrite existing docs)
+            // Upload categories
+            localCategories.forEach { category ->
+                val docRef = firestore.collection("categories").document()
+                batch.set(docRef, category.copy(userId = currentUser.uid))
+            }
+
+            // Upload expenses
+            localExpenses.forEach { expense ->
+                val docRef = firestore.collection("expenses").document()
+                batch.set(docRef, expense.copy(userId = currentUser.uid))
+            }
+
+            // Commit batch
+            batch.commit().await()
+        } catch (e: Exception) {
+            // Log or rethrow as needed
+            e.printStackTrace()
+        }
+    }
+
+    // Sync data from Firestore to local DB
     suspend fun syncFromCloud() {
         val currentUser = auth.currentUser ?: return
         try {
