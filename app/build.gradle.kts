@@ -49,6 +49,13 @@ android {
         excludes += "/META-INF/{AL2.0,LGPL2.1}"
       }
     }
+} 
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.outputs.forEach { output ->
+            output.outputFileName.set("axpense-v${variant.versionCode.get()}.apk")
+        }
+    }
 }
 
 kotlin {
@@ -106,4 +113,5 @@ dependencies {
   implementation(platform(libs.firebase.bom))
   implementation(libs.firebase.auth)
   implementation(libs.firebase.firestore)
+  implementation("androidx.work:work-runtime-ktx:2.9.0")
 }
