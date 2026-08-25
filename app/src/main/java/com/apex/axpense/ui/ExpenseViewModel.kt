@@ -55,6 +55,12 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun deleteCategory(name: String) {
+        viewModelScope.launch {
+            repository.deleteCategory(name)
+        }
+    }
+
     fun signOut() {
         auth.signOut()
         _user.value = null

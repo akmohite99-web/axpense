@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -99,6 +100,17 @@ fun ExpenseEntryScreen(
                             onClick = {
                                 category = selectionOption
                                 expandedCategory = false
+                            },
+                            trailingIcon = {
+                                IconButton(onClick = {
+                                    viewModel.deleteCategory(selectionOption)
+                                    if (category == selectionOption) {
+                                        val remaining = mainCategories.filter { it != selectionOption }
+                                        category = remaining.firstOrNull() ?: "Food"
+                                    }
+                                }) {
+                                    Icon(Icons.Filled.Delete, contentDescription = "Delete Category")
+                                }
                             }
                         )
                     }
@@ -144,6 +156,16 @@ fun ExpenseEntryScreen(
                             onClick = {
                                 subCategory = selectionOption
                                 expandedSubCategory = false
+                            },
+                            trailingIcon = {
+                                IconButton(onClick = {
+                                    viewModel.deleteCategory(selectionOption)
+                                    if (subCategory == selectionOption) {
+                                        subCategory = null
+                                    }
+                                }) {
+                                    Icon(Icons.Filled.Delete, contentDescription = "Delete Sub-Category")
+                                }
                             }
                         )
                     }

@@ -23,4 +23,10 @@ interface ExpenseDao {
     
     @Query("SELECT SUM(amount) FROM expenses")
     fun getTotalSpent(): Flow<Double?>
+
+    @Query("UPDATE expenses SET category = 'Others', subCategory = null WHERE category = :categoryName")
+    suspend fun updateCategoryToOthers(categoryName: String)
+
+    @Query("UPDATE expenses SET subCategory = 'Others' WHERE subCategory = :subCategoryName")
+    suspend fun updateSubCategoryToOthers(subCategoryName: String)
 }
