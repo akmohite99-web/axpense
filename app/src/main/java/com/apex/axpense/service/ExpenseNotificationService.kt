@@ -51,8 +51,10 @@ class ExpenseNotificationService : NotificationListenerService() {
             putExtra("EXTRA_DESC", originalText)
         }
 
+        val notificationId = System.currentTimeMillis().toInt()
+
         val pendingIntent = PendingIntent.getActivity(
-            this, 0, intent,
+            this, notificationId, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -64,6 +66,6 @@ class ExpenseNotificationService : NotificationListenerService() {
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
 
-        notificationManager.notify(System.currentTimeMillis().toInt(), builder.build())
+        notificationManager.notify(notificationId, builder.build())
     }
 }

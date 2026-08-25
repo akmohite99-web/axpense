@@ -66,6 +66,56 @@ class DataRepository(
         }
     }
 
+    suspend fun deleteCategory(name: String) {
+        // Reassign expenses before deleting
+        expenseDao.updateCategoryToOthers(name)
+        expenseDao.updateSubCategoryToOthers(name)
+
+        categoryDao.deleteCategoryByName(name)
+        
+        val currentUser = auth.currentUser ?: return
+        try {
+            // Update cloud expenses
+            val expensesSnapshotCat = firestore.collection("expenses")
+                .whereEqualTo("userId", currentUser.uid)
+                .whereEqualTo("category", name)
+                .get()
+                .await()
+            for (doc in expensesSnapshotCat.documents) {
+                doc.reference.update(
+                    "category", "Others",
+                    "subCategory", null
+                )
+            }
+            
+            val expensesSnapshotSubCat = firestore.collection("expenses")
+                .whereEqualTo("userId", currentUser.uid)
+                .whereEqualTo("subCategory", name)
+                .get()
+                .await()
+            for (doc in expensesSnapshotSubCat.documents) {
+                doc.reference.update("subCategory", "Others")
+            }
+
+            // Delete cloud categories
+            val snapshot = firestore.collection("categories")
+                .whereEqualTo("userId", currentUser.uid)
+                .whereEqualTo("name", name)
+                .get()
+                .await()
+            for (doc in snapshot.documents) doc.reference.delete()
+            
+            val subSnapshot = firestore.collection("categories")
+                .whereEqualTo("userId", currentUser.uid)
+                .whereEqualTo("parentCategory", name)
+                .get()
+                .await()
+            for (doc in subSnapshot.documents) doc.reference.delete()
+        } catch (e: Exception) {
+            // Ignore errors
+        }
+    }
+
     suspend fun syncFromCloud() {
         val currentUser = auth.currentUser ?: return
         try {
