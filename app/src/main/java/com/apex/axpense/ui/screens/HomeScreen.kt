@@ -34,8 +34,39 @@ fun HomeScreen(
 
     var selectedCategory by remember { mutableStateOf<String?>(null) }
 
-    val categoryTotals = remember(expenses) {
-        expenses.groupBy { it.category }
+    var selectedYear by remember { mutableStateOf<Int?>(null) }
+    var selectedMonth by remember { mutableStateOf<Int?>(null) }
+    var yearDropdownExpanded by remember { mutableStateOf(false) }
+    var monthDropdownExpanded by remember { mutableStateOf(false) }
+
+    val availableYears = remember(expenses) {
+        expenses.map {
+            val cal = Calendar.getInstance().apply { timeInMillis = it.timestamp }
+            cal.get(Calendar.YEAR)
+        }.distinct().sortedDescending()
+    }
+
+    val months = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+    val filteredExpenses = remember(expenses, selectedYear, selectedMonth) {
+        expenses.filter { expense ->
+            val cal = Calendar.getInstance().apply { timeInMillis = expense.timestamp }
+            val year = cal.get(Calendar.YEAR)
+            val month = cal.get(Calendar.MONTH)
+            
+            val yearMatch = selectedYear == null || year == selectedYear
+            val monthMatch = selectedMonth == null || month == selectedMonth
+            
+            yearMatch && monthMatch
+        }
+    }
+
+    val filteredTotalSpent = remember(filteredExpenses) {
+        filteredExpenses.sumOf { it.amount }
+    }
+
+    val categoryTotals = remember(filteredExpenses) {
+        filteredExpenses.groupBy { it.category }
             .mapValues { entry -> entry.value.sumOf { it.amount } }
             .toList()
             .sortedByDescending { it.second }
@@ -43,9 +74,9 @@ fun HomeScreen(
     
     val maxCategoryTotal = categoryTotals.maxOfOrNull { it.second } ?: 0.0
 
-    val subCategoryTotals = remember(expenses, selectedCategory) {
+    val subCategoryTotals = remember(filteredExpenses, selectedCategory) {
         if (selectedCategory == null) emptyList()
-        else expenses.filter { it.category == selectedCategory }
+        else filteredExpenses.filter { it.category == selectedCategory }
             .groupBy { it.subCategory ?: "Uncategorized" }
             .mapValues { entry -> entry.value.sumOf { it.amount } }
             .toList()
@@ -79,6 +110,87 @@ fun HomeScreen(
         ) {
             item {
                 Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Year Dropdown
+                    ExposedDropdownMenuBox(
+                        expanded = yearDropdownExpanded,
+                        onExpandedChange = { yearDropdownExpanded = it },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        OutlinedTextField(
+                            value = selectedYear?.toString() ?: "All Time",
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Year") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = yearDropdownExpanded) },
+                            modifier = Modifier.menuAnchor().fillMaxWidth()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = yearDropdownExpanded,
+                            onDismissRequest = { yearDropdownExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("All Time") },
+                                onClick = { 
+                                    selectedYear = null
+                                    selectedMonth = null
+                                    yearDropdownExpanded = false 
+                                }
+                            )
+                            availableYears.forEach { year ->
+                                DropdownMenuItem(
+                                    text = { Text(year.toString()) },
+                                    onClick = {
+                                        selectedYear = year
+                                        yearDropdownExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    // Month Dropdown
+                    ExposedDropdownMenuBox(
+                        expanded = monthDropdownExpanded,
+                        onExpandedChange = { if (selectedYear != null) monthDropdownExpanded = it },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        OutlinedTextField(
+                            value = if (selectedYear == null) "N/A" else (selectedMonth?.let { months[it] } ?: "All Months"),
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Month") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = monthDropdownExpanded) },
+                            modifier = Modifier.menuAnchor().fillMaxWidth(),
+                            enabled = selectedYear != null
+                        )
+                        ExposedDropdownMenu(
+                            expanded = monthDropdownExpanded,
+                            onDismissRequest = { monthDropdownExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("All Months") },
+                                onClick = {
+                                    selectedMonth = null
+                                    monthDropdownExpanded = false
+                                }
+                            )
+                            months.forEachIndexed { index, month ->
+                                DropdownMenuItem(
+                                    text = { Text(month) },
+                                    onClick = {
+                                        selectedMonth = index
+                                        monthDropdownExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
                 // Total Spent Card
                 Card(
                     modifier = Modifier
@@ -95,12 +207,12 @@ fun HomeScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "Total Spent",
+                            text = if (selectedYear == null && selectedMonth == null) "Total Spent (All Time)" else "Total Spent",
                             style = MaterialTheme.typography.titleMedium
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "₹${String.format("%.2f", totalSpent ?: 0.0)}",
+                            text = "₹${String.format(Locale.getDefault(), "%.2f", filteredTotalSpent)}",
                             style = MaterialTheme.typography.headlineLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSecondaryContainer
@@ -195,14 +307,14 @@ fun HomeScreen(
                 )
             }
 
-            if (expenses.isEmpty()) {
+            if (filteredExpenses.isEmpty()) {
                 item {
                     Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                         Text("No expenses tracked yet.")
                     }
                 }
             } else {
-                items(expenses) { expense ->
+                items(filteredExpenses) { expense ->
                     ExpenseItem(expense)
                 }
                 item {
