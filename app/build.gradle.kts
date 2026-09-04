@@ -50,13 +50,13 @@ android {
       }
     }
 } 
-androidComponents {
-    onVariants(selector().withBuildType("release")) { variant ->
-        variant.outputs.forEach { output ->
-            output.outputFileName.set("axpense-v${variant.versionCode.get()}.apk")
-        }
-    }
-}
+// androidComponents {
+//     onVariants(selector().withBuildType("release")) { variant ->
+//         variant.outputs.forEach { output ->
+//             output.outputFileName.set("axpense-v${variant.versionCode.get()}.apk")
+//         }
+//     }
+// }
 
 kotlin {
     jvmToolchain(17)
