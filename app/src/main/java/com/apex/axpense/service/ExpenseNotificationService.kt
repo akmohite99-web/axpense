@@ -32,7 +32,7 @@ class ExpenseNotificationService : NotificationListenerService() {
     }
 
     private fun showExpenseNotification(amount: Double, originalText: String, sourceApp: String) {
-        val channelId = "axpense_notifications"
+        val channelId = "axpense_notifications_silent"
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -40,7 +40,9 @@ class ExpenseNotificationService : NotificationListenerService() {
                 channelId,
                 "Expense Detections",
                 NotificationManager.IMPORTANCE_HIGH
-            )
+            ).apply {
+                setSound(null, null)
+            }
             notificationManager.createNotificationChannel(channel)
         }
 
@@ -63,6 +65,7 @@ class ExpenseNotificationService : NotificationListenerService() {
             .setContentTitle("New Expense Detected: $amount")
             .setContentText("Tap to categorize this expense.")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setSound(null)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
 

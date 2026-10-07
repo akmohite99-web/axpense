@@ -34,8 +34,8 @@ fun HomeScreen(
 
     var selectedCategory by remember { mutableStateOf<String?>(null) }
 
-    var selectedYear by remember { mutableStateOf<Int?>(null) }
-    var selectedMonth by remember { mutableStateOf<Int?>(null) }
+    var selectedYear by remember { mutableStateOf<Int?>(Calendar.getInstance().get(Calendar.YEAR)) }
+    var selectedMonth by remember { mutableStateOf<Int?>(Calendar.getInstance().get(Calendar.MONTH)) }
     var yearDropdownExpanded by remember { mutableStateOf(false) }
     var monthDropdownExpanded by remember { mutableStateOf(false) }
 
