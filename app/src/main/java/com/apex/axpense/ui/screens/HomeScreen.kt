@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,7 +28,8 @@ import java.util.*
 @Composable
 fun HomeScreen(
     viewModel: ExpenseViewModel,
-    onAddExpense: () -> Unit
+    onAddExpense: () -> Unit,
+    onScanClicked: () -> Unit
 ) {
     val expenses by viewModel.expenses.collectAsState()
     val totalSpent by viewModel.totalSpent.collectAsState()
@@ -89,6 +91,11 @@ fun HomeScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Axpense") },
+                actions = {
+                    TextButton(onClick = onScanClicked) {
+                        Text("Scan SMS", color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer

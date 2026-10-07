@@ -75,7 +75,14 @@ class MainActivity : ComponentActivity() {
                             composable("home") {
                                 HomeScreen(
                                     viewModel = viewModel,
-                                    onAddExpense = { navController.navigate("add_expense") }
+                                    onAddExpense = { navController.navigate("add_expense") },
+                                    onScanClicked = { navController.navigate("scan_sms") }
+                                )
+                            }
+                            composable("scan_sms") {
+                                com.apex.axpense.ui.screens.SmsScannerScreen(
+                                    viewModel = viewModel,
+                                    onNavigateBack = { navController.popBackStack() }
                                 )
                             }
                             composable("add_expense") {
