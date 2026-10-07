@@ -16,6 +16,19 @@ class ExpenseNotificationService : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val packageName = sbn.packageName
+        
+        // Only process notifications from SMS applications
+        val isSmsApp = packageName == "com.google.android.apps.messaging" ||
+                packageName == "com.samsung.android.messaging" ||
+                packageName == "com.android.mms" ||
+                packageName.contains("sms", ignoreCase = true) ||
+                packageName.contains("mms", ignoreCase = true) ||
+                packageName.contains("messaging", ignoreCase = true)
+                
+        if (!isSmsApp) {
+            return
+        }
+
         val notification = sbn.notification
         val extras = notification.extras
         
