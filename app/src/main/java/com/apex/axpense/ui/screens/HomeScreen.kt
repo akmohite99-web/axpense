@@ -31,10 +31,12 @@ fun HomeScreen(
     viewModel: ExpenseViewModel,
     onAddExpense: () -> Unit,
     onScanClicked: () -> Unit,
+    onReviewPending: (Expense) -> Unit = {},
     notificationAccessEnabled: Boolean = true,
     onEnableNotificationAccess: () -> Unit = {}
 ) {
     val expenses by viewModel.expenses.collectAsState()
+    val pending by viewModel.pendingExpenses.collectAsState()
     val totalSpent by viewModel.totalSpent.collectAsState()
 
     var bannerDismissed by rememberSaveable { mutableStateOf(false) }
@@ -190,6 +192,29 @@ fun HomeScreen(
                             }
                         }
                     }
+                }
+            }
+
+            if (pending.isNotEmpty()) {
+                item {
+                    Text(
+                        text = "To review (${pending.size})",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    Text(
+                        text = "Found in your messages. Not counted until you confirm.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                items(pending, key = { it.remoteId }) { expense ->
+                    PendingExpenseItem(
+                        expense = expense,
+                        onReview = { onReviewPending(expense) },
+                        onDismiss = { viewModel.dismissPending(expense.remoteId) }
+                    )
                 }
             }
 
@@ -491,6 +516,43 @@ fun ChartLegendColumn(
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PendingExpenseItem(expense: Expense, onReview: () -> Unit, onDismiss: () -> Unit) {
+    val dateString = remember(expense.timestamp) {
+        SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault()).format(Date(expense.timestamp))
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(expense.description, fontWeight = FontWeight.Bold, maxLines = 2)
+                    Text(
+                        "${expense.category} · $dateString",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Text(
+                    text = "₹${String.format(Locale.getDefault(), "%.2f", expense.amount)}",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+            }
+            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                TextButton(onClick = onDismiss) { Text("Not an expense") }
+                TextButton(onClick = onReview) { Text("Review") }
             }
         }
     }

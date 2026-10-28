@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Expense::class, Category::class], version = 4, exportSchema = true)
+@Database(entities = [Expense::class, Category::class], version = 5, exportSchema = true)
 abstract class AxpenseDatabase : RoomDatabase() {
     abstract fun expenseDao(): ExpenseDao
     abstract fun categoryDao(): CategoryDao
@@ -88,6 +88,13 @@ abstract class AxpenseDatabase : RoomDatabase() {
             }
         }
 
+        /** Adds the review status; every existing expense stays "confirmed". */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE expenses ADD COLUMN status TEXT NOT NULL DEFAULT 'confirmed'")
+            }
+        }
+
         private val seedCallback = object : RoomDatabase.Callback() {
             override fun onCreate(db: SupportSQLiteDatabase) {
                 Category.DEFAULTS.forEach { name ->
@@ -106,7 +113,7 @@ abstract class AxpenseDatabase : RoomDatabase() {
                     AxpenseDatabase::class.java,
                     "axpense_database"
                 )
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .addCallback(seedCallback)
                     // Only the very first schema (no migration was ever written) may be wiped.
                     // Any future version bump must add a Migration, or the app will crash

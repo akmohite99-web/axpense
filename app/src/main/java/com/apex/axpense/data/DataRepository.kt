@@ -35,9 +35,57 @@ class DataRepository(context: Context) {
     val allExpenses: Flow<List<Expense>> = expenseDao.getAllExpenses()
     val totalSpent: Flow<Double?> = expenseDao.getTotalSpent()
     val allCategories: Flow<List<Category>> = categoryDao.getAllCategories()
+    val pendingExpenses: Flow<List<Expense>> = expenseDao.getPending()
+
+    /**
+     * True if this SMS (or an expense with the same amount at about the same time) is
+     * already stored, whether confirmed, pending or dismissed.
+     */
+    suspend fun isKnownSms(body: String, amount: Double, timestamp: Long): Boolean =
+        expenseDao.countByRemoteId(Expense.smsKey(body)) > 0 ||
+            expenseDao.countNear(amount, timestamp - DUPLICATE_WINDOW_MS, timestamp + DUPLICATE_WINDOW_MS) > 0
+
+    /** Category used last time for this merchant, if any. */
+    suspend fun guessCategory(merchant: String?): CategoryGuess? =
+        merchant?.let { expenseDao.categoryForMerchant(it) }
+
+    /**
+     * Stores an expense found in a notification as PENDING so it isn't lost if the
+     * notification is swiped away. Returns null if it was already known.
+     */
+    suspend fun recordDetected(
+        amount: Double,
+        merchant: String?,
+        body: String,
+        timestamp: Long,
+        sourceApp: String
+    ): Expense? {
+        if (isKnownSms(body, amount, timestamp)) return null
+        val guess = guessCategory(merchant)
+        val expense = Expense(
+            amount = amount,
+            description = merchant ?: snippet(body),
+            category = guess?.category ?: Category.FALLBACK,
+            subCategory = guess?.subCategory,
+            timestamp = timestamp,
+            sourceApp = sourceApp,
+            userId = auth.currentUser?.uid ?: "",
+            remoteId = Expense.smsKey(body),
+            status = Expense.PENDING
+        )
+        return if (expenseDao.insertDetected(expense) == -1L) null else expense
+    }
+
+    suspend fun dismissPending(remoteId: String) = expenseDao.dismiss(remoteId)
 
     suspend fun addExpense(expense: Expense) {
-        expenseDao.insert(expense.copy(userId = auth.currentUser?.uid ?: expense.userId, isSynced = false))
+        expenseDao.insert(
+            expense.copy(
+                userId = auth.currentUser?.uid ?: expense.userId,
+                isSynced = false,
+                status = Expense.CONFIRMED
+            )
+        )
         requestSync()
     }
 
@@ -196,6 +244,13 @@ class DataRepository(context: Context) {
     }
 
     companion object {
+        /** The same SMS reaches us as a notification and in the inbox a moment apart. */
+        private const val DUPLICATE_WINDOW_MS = 2 * 60 * 1000L
+
+        /** Short description for an SMS where no merchant could be found. */
+        fun snippet(body: String): String =
+            body.replace(Regex("\\s+"), " ").trim().take(60)
+
         private const val TAG = "DataRepository"
         private const val BATCH_SIZE = 450
         private const val SYNC_WORK = "SyncNow"

@@ -14,13 +14,20 @@ import com.apex.axpense.data.Category
 import com.apex.axpense.ui.ExpenseViewModel
 import kotlinx.coroutines.launch
 
-/** Values carried over from a detected SMS notification. */
+/** Values carried over from a detected SMS (a notification, or a pending expense on Home). */
 data class ExpensePrefill(
     val amount: Double,
     val description: String?,
     val timestamp: Long?,
-    val sourceApp: String?
+    val sourceApp: String?,
+    /** Set when this confirms an existing pending expense, so it isn't added twice. */
+    val remoteId: String? = null,
+    val category: String? = null,
+    val subCategory: String? = null
 )
+
+private fun formatAmount(value: Double): String =
+    java.math.BigDecimal.valueOf(value).stripTrailingZeros().toPlainString()
 
 private data class PendingCategoryDelete(val name: String, val parent: String?, val expenseCount: Int)
 
@@ -39,7 +46,7 @@ fun ExpenseEntryScreen(
         cats.ifEmpty { Category.DEFAULTS }
     }
 
-    var amount by remember { mutableStateOf(prefill?.amount?.toString() ?: "") }
+    var amount by remember { mutableStateOf(prefill?.amount?.let(::formatAmount) ?: "") }
     var description by remember { mutableStateOf(prefill?.description ?: "") }
     var pendingDelete by remember { mutableStateOf<PendingCategoryDelete?>(null) }
 
@@ -48,17 +55,19 @@ fun ExpenseEntryScreen(
             pendingDelete = PendingCategoryDelete(name, parent, viewModel.countExpensesIn(name, parent))
         }
     }
-    var category by remember { mutableStateOf(mainCategories.firstOrNull() ?: "Food") }
-    
+    var category by remember { mutableStateOf(prefill?.category ?: mainCategories.firstOrNull() ?: "Food") }
+
     val subCategories = remember(allCategories, category) {
         allCategories.filter { it.parentCategory == category }.map { it.name }
     }
-    
-    var subCategory by remember { mutableStateOf<String?>(null) }
-    
-    // Reset subCategory when main category changes
+
+    var subCategory by remember { mutableStateOf(prefill?.subCategory) }
+
+    // Reset subCategory when the user changes the main category (not on first show,
+    // which would throw away the sub-category suggested for a detected expense).
+    var firstComposition by remember { mutableStateOf(true) }
     LaunchedEffect(category) {
-        subCategory = null
+        if (firstComposition) firstComposition = false else subCategory = null
     }
 
     var expandedCategory by remember { mutableStateOf(false) }
@@ -213,7 +222,8 @@ fun ExpenseEntryScreen(
                             subCategory = subCategory,
                             description = description,
                             timestamp = prefill?.timestamp ?: System.currentTimeMillis(),
-                            sourceApp = prefill?.sourceApp ?: "manual"
+                            sourceApp = prefill?.sourceApp ?: "manual",
+                            remoteId = prefill?.remoteId
                         )
                         onNavigateBack()
                     }

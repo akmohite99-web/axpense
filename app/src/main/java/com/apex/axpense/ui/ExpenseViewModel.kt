@@ -28,28 +28,45 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
     val totalSpent: StateFlow<Double?> = repository.totalSpent
         .stateIn(viewModelScope, SharingStarted.Lazily, 0.0)
 
+    /** Expenses found in SMS that are waiting for the user to confirm or dismiss them. */
+    val pendingExpenses: StateFlow<List<Expense>> = repository.pendingExpenses
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    /**
+     * Saves a confirmed expense. Pass [remoteId] to confirm an existing pending one
+     * (or to give an SMS-based expense its stable ID); otherwise a new ID is created.
+     */
     fun addExpense(
         amount: Double,
         category: String,
         subCategory: String?,
         description: String,
         timestamp: Long = System.currentTimeMillis(),
-        sourceApp: String = "manual"
+        sourceApp: String = "manual",
+        remoteId: String? = null
     ) {
         viewModelScope.launch {
-            repository.addExpense(
-                Expense(
-                    amount = amount,
-                    category = category,
-                    subCategory = subCategory,
-                    description = description,
-                    timestamp = timestamp,
-                    sourceApp = sourceApp,
-                    userId = auth.currentUser?.uid ?: ""
-                )
+            val base = Expense(
+                amount = amount,
+                category = category,
+                subCategory = subCategory,
+                description = description,
+                timestamp = timestamp,
+                sourceApp = sourceApp,
+                userId = auth.currentUser?.uid ?: ""
             )
+            repository.addExpense(if (remoteId != null) base.copy(remoteId = remoteId) else base)
         }
     }
+
+    fun dismissPending(remoteId: String) {
+        viewModelScope.launch { repository.dismissPending(remoteId) }
+    }
+
+    suspend fun isKnownSms(body: String, amount: Double, timestamp: Long): Boolean =
+        repository.isKnownSms(body, amount, timestamp)
+
+    suspend fun guessCategory(merchant: String?) = repository.guessCategory(merchant)
 
     fun addCategory(name: String, parentCategory: String? = null) {
         val trimmed = name.trim()

@@ -76,7 +76,10 @@ class MainActivity : ComponentActivity() {
             amount = intent.getDoubleExtra(EXTRA_AMOUNT, 0.0),
             description = intent.getStringExtra(EXTRA_DESC),
             timestamp = intent.getLongExtra(EXTRA_TIMESTAMP, 0L).takeIf { it > 0 },
-            sourceApp = intent.getStringExtra(EXTRA_SOURCE)
+            sourceApp = intent.getStringExtra(EXTRA_SOURCE),
+            remoteId = intent.getStringExtra(EXTRA_REMOTE_ID),
+            category = intent.getStringExtra(EXTRA_CATEGORY),
+            subCategory = intent.getStringExtra(EXTRA_SUB_CATEGORY)
         )
         intent.removeExtra(EXTRA_AMOUNT)
     }
@@ -101,6 +104,18 @@ class MainActivity : ComponentActivity() {
                         navController.navigate("add_expense")
                     },
                     onScanClicked = { navController.navigate("scan_sms") },
+                    onReviewPending = { pending ->
+                        entryPrefill = ExpensePrefill(
+                            amount = pending.amount,
+                            description = pending.description,
+                            timestamp = pending.timestamp,
+                            sourceApp = pending.sourceApp,
+                            remoteId = pending.remoteId,
+                            category = pending.category,
+                            subCategory = pending.subCategory
+                        )
+                        navController.navigate("add_expense")
+                    },
                     notificationAccessEnabled = listenerEnabled,
                     onEnableNotificationAccess = {
                         startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
@@ -156,5 +171,8 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_DESC = "EXTRA_DESC"
         const val EXTRA_TIMESTAMP = "EXTRA_TIMESTAMP"
         const val EXTRA_SOURCE = "EXTRA_SOURCE"
+        const val EXTRA_REMOTE_ID = "EXTRA_REMOTE_ID"
+        const val EXTRA_CATEGORY = "EXTRA_CATEGORY"
+        const val EXTRA_SUB_CATEGORY = "EXTRA_SUB_CATEGORY"
     }
 }

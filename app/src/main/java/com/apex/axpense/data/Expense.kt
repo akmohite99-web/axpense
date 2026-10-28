@@ -22,9 +22,25 @@ data class Expense(
     // Stable ID shared with Firestore (used as the document ID), so backups never duplicate.
     @ColumnInfo(defaultValue = "''") val remoteId: String = UUID.randomUUID().toString(),
     // False until this row has been uploaded to Firestore.
-    @ColumnInfo(defaultValue = "0") val isSynced: Boolean = false
+    @ColumnInfo(defaultValue = "0") val isSynced: Boolean = false,
+    // CONFIRMED rows are real expenses. PENDING rows were detected from an SMS and wait for
+    // review; DISMISSED rows were rejected (kept so the same SMS isn't offered again).
+    // Only CONFIRMED rows are counted and uploaded.
+    @ColumnInfo(defaultValue = "'confirmed'") val status: String = CONFIRMED
 ) {
     companion object {
+        const val CONFIRMED = "confirmed"
+        const val PENDING = "pending"
+        const val DISMISSED = "dismissed"
+
+        /** Stable ID for an SMS, so the same message is never added twice (notification + inbox scan). */
+        fun smsKey(body: String): String {
+            val normalized = body.trim().replace(Regex("\\s+"), " ")
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(normalized.toByteArray(Charsets.UTF_8))
+            return "sms-" + digest.joinToString("") { "%02x".format(it) }.take(24)
+        }
+
         /**
          * ID for expenses created before remoteId existed. Must match the SQL in
          * AxpenseDatabase.MIGRATION_3_4 so old cloud copies collapse onto local rows.
