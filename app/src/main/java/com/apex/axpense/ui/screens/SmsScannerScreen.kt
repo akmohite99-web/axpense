@@ -24,6 +24,7 @@ import com.apex.axpense.data.DataRepository
 import com.apex.axpense.data.Expense
 import com.apex.axpense.service.ExpenseParser
 import com.apex.axpense.ui.ExpenseViewModel
+import com.apex.axpense.util.formatMoney
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -315,7 +316,7 @@ private fun ScannedExpenseCard(
                     Text(date, style = MaterialTheme.typography.bodySmall)
                 }
                 Text(
-                    "₹${String.format(Locale.getDefault(), "%.2f", item.amount)}",
+                    formatMoney(item.amount),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )

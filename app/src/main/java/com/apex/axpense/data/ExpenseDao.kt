@@ -37,6 +37,9 @@ interface ExpenseDao {
     @Delete
     suspend fun delete(expense: Expense)
 
+    @Query("DELETE FROM expenses WHERE remoteId = :remoteId")
+    suspend fun deleteByRemoteId(remoteId: String)
+
     @Query("SELECT SUM(amount) FROM expenses WHERE status = 'confirmed'")
     fun getTotalSpent(): Flow<Double?>
 

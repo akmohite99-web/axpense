@@ -78,6 +78,16 @@ class DataRepository(context: Context) {
 
     suspend fun dismissPending(remoteId: String) = expenseDao.dismiss(remoteId)
 
+    /** Deletes an expense here and in the cloud. Undo by passing the same expense to [addExpense]. */
+    suspend fun deleteExpense(remoteId: String) {
+        expenseDao.deleteByRemoteId(remoteId)
+        if (auth.currentUser != null) {
+            // Not awaited: Firestore keeps the delete queued and sends it once back online.
+            expensesCol.document(remoteId).delete()
+                .addOnFailureListener { Log.w(TAG, "Cloud delete failed for $remoteId", it) }
+        }
+    }
+
     suspend fun addExpense(expense: Expense) {
         expenseDao.insert(
             expense.copy(

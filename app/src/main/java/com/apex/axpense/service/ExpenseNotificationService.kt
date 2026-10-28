@@ -15,6 +15,7 @@ import com.apex.axpense.MainActivity
 import com.apex.axpense.data.Category
 import com.apex.axpense.data.DataRepository
 import com.apex.axpense.data.Expense
+import com.apex.axpense.util.formatMoney
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -95,16 +96,9 @@ class ExpenseNotificationService : NotificationListenerService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val symbol = when (currency) {
-            null, "INR" -> "₹"
-            "USD" -> "$"
-            "EUR" -> "€"
-            "GBP" -> "£"
-            else -> "$currency "
-        }
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
-            .setContentTitle("Expense detected: $symbol${"%.2f".format(expense.amount)}")
+            .setContentTitle("Expense detected: ${formatMoney(expense.amount, currency)}")
             .setContentText(
                 if (expense.category == Category.FALLBACK) "Tap to categorize this expense."
                 else "${expense.description} · ${expense.category}. Tap to review."

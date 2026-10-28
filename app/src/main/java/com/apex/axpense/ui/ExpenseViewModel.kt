@@ -59,6 +59,15 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun deleteExpense(remoteId: String) {
+        viewModelScope.launch { repository.deleteExpense(remoteId) }
+    }
+
+    /** Puts back an expense that was just deleted (the Undo action). */
+    fun restoreExpense(expense: Expense) {
+        viewModelScope.launch { repository.addExpense(expense) }
+    }
+
     fun dismissPending(remoteId: String) {
         viewModelScope.launch { repository.dismissPending(remoteId) }
     }

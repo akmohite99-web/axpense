@@ -9,7 +9,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -22,6 +22,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.apex.axpense.data.Expense
 import com.apex.axpense.ui.ExpenseViewModel
+import com.apex.axpense.util.formatMoney
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -32,9 +34,26 @@ fun HomeScreen(
     onAddExpense: () -> Unit,
     onScanClicked: () -> Unit,
     onReviewPending: (Expense) -> Unit = {},
+    onEditExpense: (Expense) -> Unit = {},
     notificationAccessEnabled: Boolean = true,
     onEnableNotificationAccess: () -> Unit = {}
 ) {
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
+    fun deleteWithUndo(expense: Expense) {
+        viewModel.deleteExpense(expense.remoteId)
+        scope.launch {
+            snackbarHostState.currentSnackbarData?.dismiss()
+            val result = snackbarHostState.showSnackbar(
+                message = "Expense deleted",
+                actionLabel = "Undo",
+                duration = SnackbarDuration.Short
+            )
+            if (result == SnackbarResult.ActionPerformed) viewModel.restoreExpense(expense)
+        }
+    }
+
     val expenses by viewModel.expenses.collectAsState()
     val pending by viewModel.pendingExpenses.collectAsState()
     val totalSpent by viewModel.totalSpent.collectAsState()
@@ -144,6 +163,7 @@ fun HomeScreen(
     val maxSubCategoryTotal = subCategoryTotals.maxOfOrNull { it.second } ?: 0.0
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Axpense") },
@@ -322,7 +342,7 @@ fun HomeScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "₹${String.format(Locale.getDefault(), "%.2f", filteredTotalSpent)}",
+                            text = formatMoney(filteredTotalSpent),
                             style = MaterialTheme.typography.headlineLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSecondaryContainer
@@ -424,8 +444,12 @@ fun HomeScreen(
                     }
                 }
             } else {
-                items(filteredExpenses) { expense ->
-                    ExpenseItem(expense)
+                items(filteredExpenses, key = { it.remoteId }) { expense ->
+                    SwipeToDeleteExpense(
+                        expense = expense,
+                        onClick = { onEditExpense(expense) },
+                        onDelete = { deleteWithUndo(expense) }
+                    )
                 }
                 item {
                     Spacer(modifier = Modifier.height(80.dp)) // padding for FAB
@@ -512,7 +536,7 @@ fun ChartLegendColumn(
                     )
                 }
                 Text(
-                    text = "₹${String.format("%.2f", item.second)}",
+                    text = formatMoney(item.second),
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                 )
@@ -545,7 +569,7 @@ private fun PendingExpenseItem(expense: Expense, onReview: () -> Unit, onDismiss
                     )
                 }
                 Text(
-                    text = "₹${String.format(Locale.getDefault(), "%.2f", expense.amount)}",
+                    text = formatMoney(expense.amount),
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp
                 )
@@ -558,12 +582,48 @@ private fun PendingExpenseItem(expense: Expense, onReview: () -> Unit, onDismiss
     }
 }
 
+/** Swipe left to delete (with Undo); tap to edit. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ExpenseItem(expense: Expense) {
+private fun SwipeToDeleteExpense(expense: Expense, onClick: () -> Unit, onDelete: () -> Unit) {
+    val state = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.EndToStart) {
+                onDelete()
+                true
+            } else false
+        }
+    )
+    SwipeToDismissBox(
+        state = state,
+        enableDismissFromStartToEnd = false,
+        backgroundContent = {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(12.dp))
+                    .padding(horizontal = 20.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Icon(
+                    Icons.Filled.Delete,
+                    contentDescription = "Delete",
+                    tint = MaterialTheme.colorScheme.onErrorContainer
+                )
+            }
+        }
+    ) {
+        ExpenseItem(expense, onClick)
+    }
+}
+
+@Composable
+fun ExpenseItem(expense: Expense, onClick: () -> Unit = {}) {
     val dateFormat = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault())
     val dateString = dateFormat.format(Date(expense.timestamp))
 
     Card(
+        onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
@@ -580,7 +640,7 @@ fun ExpenseItem(expense: Expense) {
                 Text(text = dateString, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
             }
             Text(
-                text = "₹${expense.amount}",
+                text = formatMoney(expense.amount),
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp,
                 color = MaterialTheme.colorScheme.error

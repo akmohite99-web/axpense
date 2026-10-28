@@ -1,9 +1,13 @@
 package com.apex.axpense.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -12,22 +16,49 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.apex.axpense.data.Category
 import com.apex.axpense.ui.ExpenseViewModel
+import com.apex.axpense.util.isAllowedAmountInput
+import com.apex.axpense.util.parseAmountInput
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
-/** Values carried over from a detected SMS (a notification, or a pending expense on Home). */
+/** Values carried over from a detected SMS, a pending expense, or an expense being edited. */
 data class ExpensePrefill(
     val amount: Double,
     val description: String?,
     val timestamp: Long?,
     val sourceApp: String?,
-    /** Set when this confirms an existing pending expense, so it isn't added twice. */
+    /** Set when this confirms a pending expense or edits a saved one, so it isn't added twice. */
     val remoteId: String? = null,
     val category: String? = null,
-    val subCategory: String? = null
+    val subCategory: String? = null,
+    /** True when editing an expense that is already saved (shows Delete, "Save Changes"). */
+    val editing: Boolean = false
 )
 
 private fun formatAmount(value: Double): String =
     java.math.BigDecimal.valueOf(value).stripTrailingZeros().toPlainString()
+
+/** The date picker works in UTC midnight; this gives the picked day with [existing]'s time of day. */
+private fun withPickedDate(existing: Long, pickedUtcMidnight: Long): Long {
+    val picked = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = pickedUtcMidnight }
+    return Calendar.getInstance().apply {
+        timeInMillis = existing
+        set(picked.get(Calendar.YEAR), picked.get(Calendar.MONTH), picked.get(Calendar.DAY_OF_MONTH))
+    }.timeInMillis
+}
+
+/** UTC midnight of [millis]'s local calendar day, which is what the date picker expects. */
+private fun toPickerUtc(millis: Long): Long {
+    val local = Calendar.getInstance().apply { timeInMillis = millis }
+    return Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+        clear()
+        set(local.get(Calendar.YEAR), local.get(Calendar.MONTH), local.get(Calendar.DAY_OF_MONTH))
+    }.timeInMillis
+}
 
 private data class PendingCategoryDelete(val name: String, val parent: String?, val expenseCount: Int)
 
@@ -48,6 +79,13 @@ fun ExpenseEntryScreen(
 
     var amount by remember { mutableStateOf(prefill?.amount?.let(::formatAmount) ?: "") }
     var description by remember { mutableStateOf(prefill?.description ?: "") }
+    var timestamp by remember { mutableStateOf(prefill?.timestamp ?: System.currentTimeMillis()) }
+    var showDatePicker by remember { mutableStateOf(false) }
+    var showErrors by remember { mutableStateOf(false) }
+    var saved by remember { mutableStateOf(false) } // stops a double tap from adding two expenses
+    var showDeleteExpenseDialog by remember { mutableStateOf(false) }
+    val editing = prefill?.editing == true && prefill.remoteId != null
+    val amountValue = parseAmountInput(amount)
     var pendingDelete by remember { mutableStateOf<PendingCategoryDelete?>(null) }
 
     fun askToDelete(name: String, parent: String?) {
@@ -80,7 +118,7 @@ fun ExpenseEntryScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Add Expense") },
+                title = { Text(if (editing) "Edit Expense" else "Add Expense") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
@@ -93,16 +131,38 @@ fun ExpenseEntryScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             OutlinedTextField(
                 value = amount,
-                onValueChange = { amount = it },
+                onValueChange = { if (isAllowedAmountInput(it)) amount = it },
                 label = { Text("Amount") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                prefix = { Text("₹") },
+                singleLine = true,
+                isError = showErrors && amountValue == null,
+                supportingText = {
+                    if (showErrors && amountValue == null) Text("Enter an amount greater than 0")
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.fillMaxWidth()
             )
+
+            // Date: tapping anywhere on the field opens the picker.
+            Box(modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = remember(timestamp) {
+                        SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(timestamp))
+                    },
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Date") },
+                    trailingIcon = { Icon(Icons.Filled.DateRange, contentDescription = "Pick date") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Box(modifier = Modifier.matchParentSize().clickable { showDatePicker = true })
+            }
 
             // Main Category Dropdown
             ExposedDropdownMenuBox(
@@ -214,14 +274,15 @@ fun ExpenseEntryScreen(
 
             Button(
                 onClick = {
-                    val parsedAmount = amount.toDoubleOrNull()
-                    if (parsedAmount != null && parsedAmount > 0) {
+                    showErrors = true
+                    if (amountValue != null && !saved) {
+                        saved = true
                         viewModel.addExpense(
-                            amount = parsedAmount,
+                            amount = amountValue,
                             category = category,
                             subCategory = subCategory,
-                            description = description,
-                            timestamp = prefill?.timestamp ?: System.currentTimeMillis(),
+                            description = description.trim(),
+                            timestamp = timestamp,
                             sourceApp = prefill?.sourceApp ?: "manual",
                             remoteId = prefill?.remoteId
                         )
@@ -230,10 +291,59 @@ fun ExpenseEntryScreen(
                 },
                 modifier = Modifier.fillMaxWidth().height(50.dp)
             ) {
-                Text("Save Expense")
+                Text(if (editing) "Save Changes" else "Save Expense")
+            }
+
+            if (editing) {
+                OutlinedButton(
+                    onClick = { showDeleteExpenseDialog = true },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.fillMaxWidth().height(50.dp)
+                ) {
+                    Text("Delete Expense")
+                }
             }
         }
-        
+
+        if (showDatePicker) {
+            val todayUtc = toPickerUtc(System.currentTimeMillis())
+            val pickerState = rememberDatePickerState(
+                initialSelectedDateMillis = toPickerUtc(timestamp),
+                selectableDates = object : SelectableDates {
+                    // No future dates.
+                    override fun isSelectableDate(utcTimeMillis: Long) = utcTimeMillis <= todayUtc
+                }
+            )
+            DatePickerDialog(
+                onDismissRequest = { showDatePicker = false },
+                confirmButton = {
+                    TextButton(onClick = {
+                        pickerState.selectedDateMillis?.let { timestamp = withPickedDate(timestamp, it) }
+                        showDatePicker = false
+                    }) { Text("OK") }
+                },
+                dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text("Cancel") } }
+            ) {
+                DatePicker(state = pickerState)
+            }
+        }
+
+        if (showDeleteExpenseDialog) {
+            AlertDialog(
+                onDismissRequest = { showDeleteExpenseDialog = false },
+                title = { Text("Delete this expense?") },
+                text = { Text("It will also be removed from your backup. This can't be undone.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showDeleteExpenseDialog = false
+                        prefill?.remoteId?.let { viewModel.deleteExpense(it) }
+                        onNavigateBack()
+                    }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                },
+                dismissButton = { TextButton(onClick = { showDeleteExpenseDialog = false }) { Text("Cancel") } }
+            )
+        }
+
         // Delete Category confirmation
         pendingDelete?.let { pd ->
             val isSub = pd.parent != null

@@ -116,6 +116,19 @@ class MainActivity : ComponentActivity() {
                         )
                         navController.navigate("add_expense")
                     },
+                    onEditExpense = { saved ->
+                        entryPrefill = ExpensePrefill(
+                            amount = saved.amount,
+                            description = saved.description,
+                            timestamp = saved.timestamp,
+                            sourceApp = saved.sourceApp,
+                            remoteId = saved.remoteId,
+                            category = saved.category,
+                            subCategory = saved.subCategory,
+                            editing = true
+                        )
+                        navController.navigate("add_expense")
+                    },
                     notificationAccessEnabled = listenerEnabled,
                     onEnableNotificationAccess = {
                         startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
