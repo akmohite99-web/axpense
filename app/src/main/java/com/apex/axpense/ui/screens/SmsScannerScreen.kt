@@ -99,8 +99,16 @@ fun SmsScannerScreen(
         )
     }
 
-    fun update(key: String, change: (ScannedExpense) -> ScannedExpense) {
-        scanned = scanned.map { if (it.key == key) change(it) else it }
+    /**
+     * Applies a category choice to this item and to the other unsaved items from the same
+     * merchant that still have the same (guessed) category, so it only has to be picked once.
+     */
+    fun choose(item: ScannedExpense, category: String, subCategory: String?) {
+        scanned = scanned.map {
+            val sameMerchant = it.description.equals(item.description, ignoreCase = true) &&
+                it.category == item.category && it.subCategory == item.subCategory
+            if (it.key == item.key || sameMerchant) it.copy(category = category, subCategory = subCategory) else it
+        }
     }
 
     fun scan() {
@@ -277,11 +285,11 @@ fun SmsScannerScreen(
                         subCategoriesOf = { parent ->
                             categories.filter { it.parentCategory == parent }.map { it.name }
                         },
-                        onCategoryChange = { category -> update(item.key) { it.copy(category = category, subCategory = null) } },
-                        onSubCategoryChange = { sub -> update(item.key) { it.copy(subCategory = sub) } },
+                        onCategoryChange = { category -> choose(item, category, null) },
+                        onSubCategoryChange = { sub -> choose(item, item.category, sub) },
                         onAddSubCategory = { name ->
                             viewModel.addCategory(name, item.category)
-                            update(item.key) { it.copy(subCategory = name.trim()) }
+                            choose(item, item.category, name.trim())
                         },
                         onSkip = { scanned = scanned.filter { it.key != item.key } },
                         onSave = {
@@ -296,6 +304,7 @@ fun SmsScannerScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ScannedExpenseCard(
     item: ScannedExpense,
@@ -337,7 +346,8 @@ private fun ScannedExpenseCard(
             )
             Spacer(modifier = Modifier.height(8.dp))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // FlowRow so the Sub chip wraps to the next line instead of being cut off on narrow screens.
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 PickerChip(
                     label = "Category",
                     value = item.category,

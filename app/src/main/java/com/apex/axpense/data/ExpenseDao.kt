@@ -104,10 +104,17 @@ interface ExpenseDao {
 
     // ---- Category guessing ----
 
+    /**
+     * The category the user last chose for this merchant: an exact name match wins, then a
+     * partial one ("SWIGGY" vs "Swiggy Instamart"). Expenses left in the fallback category
+     * are ignored so they never override a real choice.
+     */
     @Query(
         "SELECT category, subCategory FROM expenses " +
-            "WHERE status = 'confirmed' AND description = :merchant COLLATE NOCASE " +
-            "ORDER BY timestamp DESC LIMIT 1"
+            "WHERE status = 'confirmed' AND category != '${Category.FALLBACK}' AND (" +
+            "LOWER(description) = LOWER(:merchant) OR (LENGTH(description) >= 4 AND LENGTH(:merchant) >= 4 AND " +
+            "(instr(LOWER(description), LOWER(:merchant)) > 0 OR instr(LOWER(:merchant), LOWER(description)) > 0))) " +
+            "ORDER BY (LOWER(description) = LOWER(:merchant)) DESC, timestamp DESC LIMIT 1"
     )
     suspend fun categoryForMerchant(merchant: String): CategoryGuess?
 
