@@ -6,8 +6,12 @@ import com.apex.axpense.work.BackupWorker
 import java.util.concurrent.TimeUnit
 
 class App : Application() {
+    lateinit var container: AppContainer
+        private set
+
     override fun onCreate() {
         super.onCreate()
+        container = AppContainer(this)
         scheduleHourlyBackup()
     }
 

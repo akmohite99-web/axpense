@@ -13,7 +13,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.apex.axpense.MainActivity
 import com.apex.axpense.data.Category
-import com.apex.axpense.data.DataRepository
+import com.apex.axpense.container
 import com.apex.axpense.data.Expense
 import com.apex.axpense.util.formatMoney
 import kotlinx.coroutines.CoroutineScope
@@ -48,7 +48,7 @@ class ExpenseNotificationService : NotificationListenerService() {
 
         scope.launch {
             try {
-                val saved = DataRepository(applicationContext)
+                val saved = applicationContext.container.repository
                     .recordDetected(txn.amount, txn.merchant, text, postedAt, packageName)
                     ?: return@launch // already known (e.g. the notification was updated)
                 showExpenseNotification(saved, txn.currency)

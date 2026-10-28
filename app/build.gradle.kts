@@ -3,7 +3,6 @@ import java.util.Properties
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.compose.compiler)
-  alias(libs.plugins.kotlin.serialization)
   alias(libs.plugins.ksp)
   alias(libs.plugins.google.services)
 }
@@ -27,8 +26,8 @@ android {
         applicationId = "com.apex.axpense"
         minSdk = 24
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.3"
+        versionCode = 7
+        versionName = "1.6"
     }
 
     signingConfigs {
@@ -44,7 +43,9 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8: removes unused code and resources and shortens names (much smaller APK).
+            isMinifyEnabled = true
+            isShrinkResources = true
             signingConfig = signingConfigs.findByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
@@ -121,9 +122,6 @@ dependencies {
 
   // Navigation
   implementation(libs.androidx.navigation.compose)
-  implementation(libs.androidx.navigation3.ui)
-  implementation(libs.androidx.navigation3.runtime)
-  implementation(libs.androidx.lifecycle.viewmodel.navigation3)
 
   // Room
   implementation(libs.androidx.room.runtime)
@@ -134,7 +132,10 @@ dependencies {
   implementation(platform(libs.firebase.bom))
   implementation(libs.firebase.auth)
   implementation(libs.firebase.firestore)
-  implementation("androidx.work:work-runtime-ktx:2.9.0")
+
+  // Background work
+  implementation(libs.androidx.work.runtime.ktx)
+
   // Firebase pulls in Fragment 1.1.0, which fails the release lint check for the ActivityResult API.
-  implementation("androidx.fragment:fragment:1.8.9")
+  implementation(libs.androidx.fragment)
 }

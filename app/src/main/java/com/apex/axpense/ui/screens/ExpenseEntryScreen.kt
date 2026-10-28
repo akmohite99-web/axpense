@@ -6,7 +6,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
@@ -121,7 +121,7 @@ fun ExpenseEntryScreen(
                 title = { Text(if (editing) "Edit Expense" else "Add Expense") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -176,7 +176,7 @@ fun ExpenseEntryScreen(
                     label = { Text("Category") },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedCategory) },
                     colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
-                    modifier = Modifier.menuAnchor().fillMaxWidth()
+                    modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth()
                 )
                 ExposedDropdownMenu(
                     expanded = expandedCategory,
@@ -201,7 +201,7 @@ fun ExpenseEntryScreen(
                             }
                         )
                     }
-                    Divider()
+                    HorizontalDivider()
                     DropdownMenuItem(
                         text = { Text("➕ Add New Category...") },
                         onClick = {
@@ -224,7 +224,7 @@ fun ExpenseEntryScreen(
                     label = { Text("Sub-Category (Optional)") },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedSubCategory) },
                     colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
-                    modifier = Modifier.menuAnchor().fillMaxWidth()
+                    modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth()
                 )
                 ExposedDropdownMenu(
                     expanded = expandedSubCategory,
@@ -254,7 +254,7 @@ fun ExpenseEntryScreen(
                             }
                         )
                     }
-                    Divider()
+                    HorizontalDivider()
                     DropdownMenuItem(
                         text = { Text("➕ Add New Sub-Category...") },
                         onClick = {

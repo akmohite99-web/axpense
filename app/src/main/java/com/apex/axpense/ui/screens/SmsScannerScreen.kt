@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -36,6 +36,7 @@ data class ScannedExpense(
     val key: String, // Expense.smsKey(body): also the saved expense's ID, so it can't be added twice
     val amount: Double,
     val description: String,
+    val body: String, // the full SMS text, shown so the user can judge it
     val timestamp: Long,
     val category: String,
     val subCategory: String?
@@ -123,6 +124,7 @@ fun SmsScannerScreen(
                         key = key,
                         amount = txn.amount,
                         description = txn.merchant ?: DataRepository.snippet(body),
+                        body = body.trim(),
                         timestamp = date,
                         category = guess?.category ?: Category.FALLBACK,
                         subCategory = guess?.subCategory
@@ -143,7 +145,7 @@ fun SmsScannerScreen(
                 title = { Text("Scan SMS for Expenses") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -179,7 +181,7 @@ fun SmsScannerScreen(
                         readOnly = true,
                         label = { Text("Year") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = yearDropdownExpanded) },
-                        modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
+                        modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth()
                     )
                     ExposedDropdownMenu(
                         expanded = yearDropdownExpanded,
@@ -208,7 +210,7 @@ fun SmsScannerScreen(
                         readOnly = true,
                         label = { Text("Month") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = monthDropdownExpanded) },
-                        modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
+                        modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth()
                     )
                     ExposedDropdownMenu(
                         expanded = monthDropdownExpanded,
@@ -277,6 +279,10 @@ fun SmsScannerScreen(
                         },
                         onCategoryChange = { category -> update(item.key) { it.copy(category = category, subCategory = null) } },
                         onSubCategoryChange = { sub -> update(item.key) { it.copy(subCategory = sub) } },
+                        onAddSubCategory = { name ->
+                            viewModel.addCategory(name, item.category)
+                            update(item.key) { it.copy(subCategory = name.trim()) }
+                        },
                         onSkip = { scanned = scanned.filter { it.key != item.key } },
                         onSave = {
                             save(item)
@@ -297,6 +303,7 @@ private fun ScannedExpenseCard(
     subCategoriesOf: (String) -> List<String>,
     onCategoryChange: (String) -> Unit,
     onSubCategoryChange: (String?) -> Unit,
+    onAddSubCategory: (String) -> Unit,
     onSkip: () -> Unit,
     onSave: () -> Unit
 ) {
@@ -323,6 +330,12 @@ private fun ScannedExpenseCard(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                item.body,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(8.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 PickerChip(
@@ -331,15 +344,14 @@ private fun ScannedExpenseCard(
                     options = mainCategories,
                     onSelect = { it?.let(onCategoryChange) }
                 )
-                if (subCategories.isNotEmpty()) {
-                    PickerChip(
-                        label = "Sub",
-                        value = item.subCategory ?: "None",
-                        options = subCategories,
-                        noneLabel = "None",
-                        onSelect = onSubCategoryChange
-                    )
-                }
+                PickerChip(
+                    label = "Sub",
+                    value = item.subCategory ?: "None",
+                    options = subCategories,
+                    noneLabel = "None",
+                    onSelect = onSubCategoryChange,
+                    onAdd = onAddSubCategory
+                )
             }
 
             Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
@@ -356,9 +368,27 @@ private fun PickerChip(
     value: String,
     options: List<String>,
     onSelect: (String?) -> Unit,
-    noneLabel: String? = null
+    noneLabel: String? = null,
+    onAdd: ((String) -> Unit)? = null
 ) {
     var open by remember { mutableStateOf(false) }
+    var adding by remember { mutableStateOf(false) }
+    var newName by remember { mutableStateOf("") }
+    if (adding) {
+        AlertDialog(
+            onDismissRequest = { adding = false },
+            title = { Text("New sub-category") },
+            text = { OutlinedTextField(value = newName, onValueChange = { newName = it }, singleLine = true, label = { Text("Name") }) },
+            confirmButton = {
+                TextButton(enabled = newName.isNotBlank(), onClick = {
+                    onAdd?.invoke(newName)
+                    newName = ""
+                    adding = false
+                }) { Text("Add") }
+            },
+            dismissButton = { TextButton(onClick = { adding = false }) { Text("Cancel") } }
+        )
+    }
     Box {
         AssistChip(onClick = { open = true }, label = { Text("$label: $value") })
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
@@ -367,6 +397,9 @@ private fun PickerChip(
             }
             options.forEach { option ->
                 DropdownMenuItem(text = { Text(option) }, onClick = { onSelect(option); open = false })
+            }
+            if (onAdd != null) {
+                DropdownMenuItem(text = { Text("+ New...") }, onClick = { open = false; adding = true })
             }
         }
     }

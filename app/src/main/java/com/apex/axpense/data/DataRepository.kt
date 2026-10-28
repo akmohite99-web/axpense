@@ -13,6 +13,7 @@ import com.apex.axpense.work.BackupWorker
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.tasks.await
 
@@ -20,21 +21,29 @@ import kotlinx.coroutines.tasks.await
  * Room is the source of truth. Local changes are marked `isSynced = false` and uploaded
  * by [BackupWorker] to Firestore documents keyed by `remoteId`, so uploads are idempotent.
  */
-class DataRepository(context: Context) {
+class DataRepository(
+    context: Context,
+    private val db: AxpenseDatabase,
+    private val auth: FirebaseAuth,
+    private val firestore: FirebaseFirestore
+) {
     private val appContext = context.applicationContext
-    private val db = AxpenseDatabase.getDatabase(appContext)
     private val expenseDao = db.expenseDao()
     private val categoryDao = db.categoryDao()
     private val prefs = appContext.getSharedPreferences("axpense_sync", Context.MODE_PRIVATE)
 
-    private val firestore = FirebaseFirestore.getInstance()
-    private val auth = FirebaseAuth.getInstance()
     private val expensesCol get() = firestore.collection("expenses")
     private val categoriesCol get() = firestore.collection("categories")
 
-    val allExpenses: Flow<List<Expense>> = expenseDao.getAllExpenses()
-    val totalSpent: Flow<Double?> = expenseDao.getTotalSpent()
     val allCategories: Flow<List<Category>> = categoryDao.getAllCategories()
+
+    // The Home screen's numbers are computed by SQLite for the chosen [start, end) range.
+    fun expensesBetween(start: Long, end: Long): Flow<List<Expense>> = expenseDao.getBetween(start, end)
+    fun totalBetween(start: Long, end: Long): Flow<Double> = expenseDao.totalBetween(start, end)
+    fun categoryTotals(start: Long, end: Long): Flow<List<CategoryTotal>> = expenseDao.categoryTotals(start, end)
+    fun subCategoryTotals(category: String, start: Long, end: Long): Flow<List<CategoryTotal>> =
+        expenseDao.subCategoryTotals(category, start, end)
+    val earliestTimestamp: Flow<Long?> = expenseDao.earliestTimestamp()
     val pendingExpenses: Flow<List<Expense>> = expenseDao.getPending()
 
     /**
@@ -207,12 +216,18 @@ class DataRepository(context: Context) {
         prefs.edit { putBoolean(flag, true) }
     }
 
-    /** Pulls the user's data from Firestore once per sign-in. Local rows are never overwritten. */
-    suspend fun restoreFromCloudIfNeeded() {
-        val uid = auth.currentUser?.uid ?: return
+    /** What a restore found in the cloud and what it added to this device. */
+    data class RestoreResult(val cloudExpenses: Int = 0, val added: Int = 0, val error: String? = null)
+
+    /**
+     * Pulls the user's data from Firestore once per sign-in (or on demand with [force]).
+     * Local rows are never overwritten. Returns null if there was nothing to do.
+     */
+    suspend fun restoreFromCloudIfNeeded(force: Boolean = false): RestoreResult? {
+        val uid = auth.currentUser?.uid ?: return null
         val flag = "restored_$uid"
-        if (prefs.getBoolean(flag, false)) return
-        try {
+        if (!force && prefs.getBoolean(flag, false)) return null
+        return try {
             val categoryDocs = categoriesCol.whereEqualTo("userId", uid).get().await().documents
             // Current-format docs first, so they win over old duplicates with the same ID.
             categoryDao.insertIfAbsent(
@@ -220,14 +235,18 @@ class DataRepository(context: Context) {
             )
 
             val expenseDocs = expensesCol.whereEqualTo("userId", uid).get().await().documents
-            expenseDao.insertIfAbsent(
+            val inserted = expenseDao.insertIfAbsent(
                 expenseDocs.sortedBy { it.isLegacyDoc() }.mapNotNull { it.toExpense() }
             )
+            Log.i(TAG, "Restore: ${expenseDocs.size} cloud expenses, ${inserted.count { it != -1L }} added")
 
             prefs.edit { putBoolean(flag, true) }
             requestSync() // re-upload any legacy-only rows under their stable IDs
+            RestoreResult(expenseDocs.size, inserted.count { it != -1L })
         } catch (e: Exception) {
             Log.w(TAG, "Restore from cloud failed; will retry next launch", e)
+            val code = (e as? FirebaseFirestoreException)?.code?.name ?: e.javaClass.simpleName
+            RestoreResult(error = code)
         }
     }
 

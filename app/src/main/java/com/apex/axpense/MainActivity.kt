@@ -43,7 +43,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        viewModel.updateCurrentUser()
         // On recreation (e.g. rotation) the intent is the same one we already handled.
         if (savedInstanceState == null) consumePrefill(intent)
         requestPostNotificationsIfNeeded()
@@ -56,7 +55,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val user by viewModel.user.collectAsState()
                     if (user == null) {
-                        LoginScreen(onLoginSuccess = { viewModel.updateCurrentUser() })
+                        LoginScreen()
                     } else {
                         AppNavHost()
                     }

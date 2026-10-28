@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.apex.axpense.data.Expense
 import com.apex.axpense.ui.ExpenseViewModel
+import com.apex.axpense.util.Period
 import com.apex.axpense.util.formatMoney
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -41,6 +42,10 @@ fun HomeScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
+    LaunchedEffect(viewModel) {
+        viewModel.messages.collect { snackbarHostState.showSnackbar(it) }
+    }
+
     fun deleteWithUndo(expense: Expense) {
         viewModel.deleteExpense(expense.remoteId)
         scope.launch {
@@ -54,9 +59,18 @@ fun HomeScreen(
         }
     }
 
-    val expenses by viewModel.expenses.collectAsState()
     val pending by viewModel.pendingExpenses.collectAsState()
-    val totalSpent by viewModel.totalSpent.collectAsState()
+
+    // Filtering and totals are computed by the database for the chosen period.
+    val period by viewModel.period.collectAsState()
+    val availableYears by viewModel.availableYears.collectAsState()
+    val filteredExpenses by viewModel.periodExpenses.collectAsState()
+    val filteredTotalSpent by viewModel.periodTotal.collectAsState()
+    val categoryTotals by viewModel.categoryTotals.collectAsState()
+    val subCategoryTotals by viewModel.subCategoryTotals.collectAsState()
+    val selectedCategory by viewModel.selectedCategory.collectAsState()
+    val selectedYear = period.year
+    val selectedMonth = period.month
 
     var bannerDismissed by rememberSaveable { mutableStateOf(false) }
     var showSignOutDialog by remember { mutableStateOf(false) }
@@ -109,58 +123,10 @@ fun HomeScreen(
         )
     }
 
-    var selectedCategory by remember { mutableStateOf<String?>(null) }
-
-    var selectedYear by remember { mutableStateOf<Int?>(Calendar.getInstance().get(Calendar.YEAR)) }
-    var selectedMonth by remember { mutableStateOf<Int?>(Calendar.getInstance().get(Calendar.MONTH)) }
     var yearDropdownExpanded by remember { mutableStateOf(false) }
     var monthDropdownExpanded by remember { mutableStateOf(false) }
 
-    val availableYears = remember(expenses) {
-        expenses.map {
-            val cal = Calendar.getInstance().apply { timeInMillis = it.timestamp }
-            cal.get(Calendar.YEAR)
-        }.distinct().sortedDescending()
-    }
-
     val months = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
-
-    val filteredExpenses = remember(expenses, selectedYear, selectedMonth) {
-        expenses.filter { expense ->
-            val cal = Calendar.getInstance().apply { timeInMillis = expense.timestamp }
-            val year = cal.get(Calendar.YEAR)
-            val month = cal.get(Calendar.MONTH)
-            
-            val yearMatch = selectedYear == null || year == selectedYear
-            val monthMatch = selectedMonth == null || month == selectedMonth
-            
-            yearMatch && monthMatch
-        }
-    }
-
-    val filteredTotalSpent = remember(filteredExpenses) {
-        filteredExpenses.sumOf { it.amount }
-    }
-
-    val categoryTotals = remember(filteredExpenses) {
-        filteredExpenses.groupBy { it.category }
-            .mapValues { entry -> entry.value.sumOf { it.amount } }
-            .toList()
-            .sortedByDescending { it.second }
-    }
-    
-    val maxCategoryTotal = categoryTotals.maxOfOrNull { it.second } ?: 0.0
-
-    val subCategoryTotals = remember(filteredExpenses, selectedCategory) {
-        if (selectedCategory == null) emptyList()
-        else filteredExpenses.filter { it.category == selectedCategory }
-            .groupBy { it.subCategory ?: "Uncategorized" }
-            .mapValues { entry -> entry.value.sumOf { it.amount } }
-            .toList()
-            .sortedByDescending { it.second }
-    }
-    
-    val maxSubCategoryTotal = subCategoryTotals.maxOfOrNull { it.second } ?: 0.0
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -168,6 +134,9 @@ fun HomeScreen(
             TopAppBar(
                 title = { Text("Axpense") },
                 actions = {
+                    TextButton(onClick = viewModel::syncNow) {
+                        Text("Sync", color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    }
                     TextButton(onClick = onScanClicked) {
                         Text("Scan SMS", color = MaterialTheme.colorScheme.onPrimaryContainer)
                     }
@@ -256,7 +225,7 @@ fun HomeScreen(
                             readOnly = true,
                             label = { Text("Year") },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = yearDropdownExpanded) },
-                            modifier = Modifier.menuAnchor().fillMaxWidth()
+                            modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth()
                         )
                         ExposedDropdownMenu(
                             expanded = yearDropdownExpanded,
@@ -264,17 +233,17 @@ fun HomeScreen(
                         ) {
                             DropdownMenuItem(
                                 text = { Text("All Time") },
-                                onClick = { 
-                                    selectedYear = null
-                                    selectedMonth = null
-                                    yearDropdownExpanded = false 
+                                onClick = {
+                                    viewModel.setPeriod(Period(null, null))
+                                    yearDropdownExpanded = false
                                 }
                             )
                             availableYears.forEach { year ->
                                 DropdownMenuItem(
                                     text = { Text(year.toString()) },
                                     onClick = {
-                                        selectedYear = year
+                                        // Keeps the chosen month; coming from "All Time" shows the whole year.
+                                        viewModel.setPeriod(Period(year, selectedMonth))
                                         yearDropdownExpanded = false
                                     }
                                 )
@@ -294,7 +263,7 @@ fun HomeScreen(
                             readOnly = true,
                             label = { Text("Month") },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = monthDropdownExpanded) },
-                            modifier = Modifier.menuAnchor().fillMaxWidth(),
+                            modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
                             enabled = selectedYear != null
                         )
                         ExposedDropdownMenu(
@@ -304,7 +273,7 @@ fun HomeScreen(
                             DropdownMenuItem(
                                 text = { Text("All Months") },
                                 onClick = {
-                                    selectedMonth = null
+                                    viewModel.setPeriod(Period(selectedYear, null))
                                     monthDropdownExpanded = false
                                 }
                             )
@@ -312,7 +281,7 @@ fun HomeScreen(
                                 DropdownMenuItem(
                                     text = { Text(month) },
                                     onClick = {
-                                        selectedMonth = index
+                                        viewModel.setPeriod(Period(selectedYear, index))
                                         monthDropdownExpanded = false
                                     }
                                 )
@@ -381,9 +350,8 @@ fun HomeScreen(
                                 data = categoryTotals,
                                 colors = chartColors,
                                 selectedCategory = selectedCategory,
-                                onCategorySelected = { 
-                                    if (selectedCategory == it) selectedCategory = null 
-                                    else selectedCategory = it 
+                                onCategorySelected = {
+                                    viewModel.selectCategory(if (selectedCategory == it) null else it)
                                 }
                             )
                         }
@@ -586,17 +554,12 @@ private fun PendingExpenseItem(expense: Expense, onReview: () -> Unit, onDismiss
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SwipeToDeleteExpense(expense: Expense, onClick: () -> Unit, onDelete: () -> Unit) {
-    val state = rememberSwipeToDismissBoxState(
-        confirmValueChange = { value ->
-            if (value == SwipeToDismissBoxValue.EndToStart) {
-                onDelete()
-                true
-            } else false
-        }
-    )
     SwipeToDismissBox(
-        state = state,
+        state = rememberSwipeToDismissBoxState(),
         enableDismissFromStartToEnd = false,
+        onDismiss = { value ->
+            if (value == SwipeToDismissBoxValue.EndToStart) onDelete()
+        },
         backgroundContent = {
             Box(
                 modifier = Modifier

@@ -11,10 +11,37 @@ import kotlinx.coroutines.flow.Flow
 /** The category an earlier expense from the same merchant was filed under. */
 data class CategoryGuess(val category: String, val subCategory: String?)
 
+/** A category (or sub-category) name with the total spent in it. */
+data class CategoryTotal(val name: String, val total: Double)
+
 @Dao
 interface ExpenseDao {
-    @Query("SELECT * FROM expenses WHERE status = 'confirmed' ORDER BY timestamp DESC")
-    fun getAllExpenses(): Flow<List<Expense>>
+    // ---- Home screen: everything for a period [start, end) in epoch millis ----
+
+    @Query("SELECT * FROM expenses WHERE status = 'confirmed' AND timestamp >= :start AND timestamp < :end ORDER BY timestamp DESC")
+    fun getBetween(start: Long, end: Long): Flow<List<Expense>>
+
+    @Query("SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE status = 'confirmed' AND timestamp >= :start AND timestamp < :end")
+    fun totalBetween(start: Long, end: Long): Flow<Double>
+
+    @Query(
+        "SELECT category AS name, SUM(amount) AS total FROM expenses " +
+            "WHERE status = 'confirmed' AND timestamp >= :start AND timestamp < :end " +
+            "GROUP BY category ORDER BY total DESC"
+    )
+    fun categoryTotals(start: Long, end: Long): Flow<List<CategoryTotal>>
+
+    @Query(
+        "SELECT COALESCE(subCategory, 'Uncategorized') AS name, SUM(amount) AS total FROM expenses " +
+            "WHERE status = 'confirmed' AND category = :category AND timestamp >= :start AND timestamp < :end " +
+            "GROUP BY COALESCE(subCategory, 'Uncategorized') ORDER BY total DESC"
+    )
+    fun subCategoryTotals(category: String, start: Long, end: Long): Flow<List<CategoryTotal>>
+
+    @Query("SELECT MIN(timestamp) FROM expenses WHERE status = 'confirmed'")
+    fun earliestTimestamp(): Flow<Long?>
+
+    // ---- Writing and syncing ----
 
     @Query("SELECT * FROM expenses WHERE status = 'pending' ORDER BY timestamp DESC")
     fun getPending(): Flow<List<Expense>>
@@ -29,7 +56,7 @@ interface ExpenseDao {
 
     /** Used by cloud restore: rows that already exist locally (same remoteId) are kept as-is. */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertIfAbsent(expenses: List<Expense>)
+    suspend fun insertIfAbsent(expenses: List<Expense>): List<Long>
 
     @Update
     suspend fun update(expense: Expense)
@@ -39,9 +66,6 @@ interface ExpenseDao {
 
     @Query("DELETE FROM expenses WHERE remoteId = :remoteId")
     suspend fun deleteByRemoteId(remoteId: String)
-
-    @Query("SELECT SUM(amount) FROM expenses WHERE status = 'confirmed'")
-    fun getTotalSpent(): Flow<Double?>
 
     @Query("SELECT * FROM expenses WHERE isSynced = 0 AND status = 'confirmed'")
     suspend fun getUnsynced(): List<Expense>

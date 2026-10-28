@@ -26,7 +26,7 @@ import com.google.firebase.auth.FirebaseAuthException
 private const val MIN_PASSWORD_LENGTH = 6
 
 @Composable
-fun LoginScreen(onLoginSuccess: () -> Unit) {
+fun LoginScreen() {
     var email by rememberSaveable { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var showPassword by remember { mutableStateOf(false) }
@@ -51,8 +51,8 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                 else auth.signInWithEmailAndPassword(cleanEmail, password)
                 task.addOnCompleteListener { result ->
                     isLoading = false
-                    if (result.isSuccessful) onLoginSuccess()
-                    else error = authErrorMessage(result.exception, isRegister)
+                    // On success the ViewModel's auth listener moves the app past this screen.
+                    if (!result.isSuccessful) error = authErrorMessage(result.exception, isRegister)
                 }
             }
         }
