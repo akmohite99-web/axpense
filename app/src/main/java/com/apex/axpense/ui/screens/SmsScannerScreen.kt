@@ -28,7 +28,7 @@ data class ScannedExpense(
     val amount: Double,
     val description: String,
     val timestamp: Long,
-    var category: String = "Uncategorized",
+    var category: String = com.apex.axpense.data.Category.FALLBACK,
     var subCategory: String? = null,
     val id: String = UUID.randomUUID().toString()
 )
@@ -213,7 +213,7 @@ fun SmsScannerScreen(
 
                                 val amount = ExpenseParser.parseAmount(body)
                                 if (amount != null) {
-                                    var guessedCategory = "Uncategorized"
+                                    var guessedCategory = com.apex.axpense.data.Category.FALLBACK
                                     var guessedSub = null as String?
                                     
                                     val similarPast = allExpenses.firstOrNull { pastExp -> 
@@ -263,7 +263,9 @@ fun SmsScannerScreen(
                                     amount = expense.amount,
                                     category = expense.category,
                                     subCategory = expense.subCategory,
-                                    description = expense.description
+                                    description = expense.description,
+                                    timestamp = expense.timestamp, // the SMS date, not today
+                                    sourceApp = "sms_scan"
                                 )
                                 scannedExpenses = scannedExpenses.filter { it.id != expense.id }
                                 Toast.makeText(context, "Saved", Toast.LENGTH_SHORT).show()

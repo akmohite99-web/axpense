@@ -10,25 +10,44 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.apex.axpense.data.Category
 import com.apex.axpense.ui.ExpenseViewModel
+import kotlinx.coroutines.launch
+
+/** Values carried over from a detected SMS notification. */
+data class ExpensePrefill(
+    val amount: Double,
+    val description: String?,
+    val timestamp: Long?,
+    val sourceApp: String?
+)
+
+private data class PendingCategoryDelete(val name: String, val parent: String?, val expenseCount: Int)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExpenseEntryScreen(
     viewModel: ExpenseViewModel,
-    initialAmount: Double? = null,
-    initialDesc: String? = null,
+    prefill: ExpensePrefill? = null,
     onNavigateBack: () -> Unit
 ) {
     val allCategories by viewModel.categories.collectAsState()
-    
+    val scope = rememberCoroutineScope()
+
     val mainCategories = remember(allCategories) {
         val cats = allCategories.filter { it.parentCategory == null }.map { it.name }
-        if (cats.isEmpty()) listOf("Food", "Transport", "Shopping", "Entertainment", "Bills", "Other") else cats
+        cats.ifEmpty { Category.DEFAULTS }
     }
-    
-    var amount by remember { mutableStateOf(initialAmount?.toString() ?: "") }
-    var description by remember { mutableStateOf(initialDesc ?: "") }
+
+    var amount by remember { mutableStateOf(prefill?.amount?.toString() ?: "") }
+    var description by remember { mutableStateOf(prefill?.description ?: "") }
+    var pendingDelete by remember { mutableStateOf<PendingCategoryDelete?>(null) }
+
+    fun askToDelete(name: String, parent: String?) {
+        scope.launch {
+            pendingDelete = PendingCategoryDelete(name, parent, viewModel.countExpensesIn(name, parent))
+        }
+    }
     var category by remember { mutableStateOf(mainCategories.firstOrNull() ?: "Food") }
     
     val subCategories = remember(allCategories, category) {
@@ -101,15 +120,14 @@ fun ExpenseEntryScreen(
                                 category = selectionOption
                                 expandedCategory = false
                             },
-                            trailingIcon = {
-                                IconButton(onClick = {
-                                    viewModel.deleteCategory(selectionOption)
-                                    if (category == selectionOption) {
-                                        val remaining = mainCategories.filter { it != selectionOption }
-                                        category = remaining.firstOrNull() ?: "Food"
+                            trailingIcon = if (selectionOption == Category.FALLBACK) null else {
+                                {
+                                    IconButton(onClick = {
+                                        expandedCategory = false
+                                        askToDelete(selectionOption, null)
+                                    }) {
+                                        Icon(Icons.Filled.Delete, contentDescription = "Delete Category")
                                     }
-                                }) {
-                                    Icon(Icons.Filled.Delete, contentDescription = "Delete Category")
                                 }
                             }
                         )
@@ -159,10 +177,8 @@ fun ExpenseEntryScreen(
                             },
                             trailingIcon = {
                                 IconButton(onClick = {
-                                    viewModel.deleteCategory(selectionOption)
-                                    if (subCategory == selectionOption) {
-                                        subCategory = null
-                                    }
+                                    expandedSubCategory = false
+                                    askToDelete(selectionOption, category)
                                 }) {
                                     Icon(Icons.Filled.Delete, contentDescription = "Delete Sub-Category")
                                 }
@@ -191,7 +207,14 @@ fun ExpenseEntryScreen(
                 onClick = {
                     val parsedAmount = amount.toDoubleOrNull()
                     if (parsedAmount != null && parsedAmount > 0) {
-                        viewModel.addExpense(parsedAmount, category, subCategory, description)
+                        viewModel.addExpense(
+                            amount = parsedAmount,
+                            category = category,
+                            subCategory = subCategory,
+                            description = description,
+                            timestamp = prefill?.timestamp ?: System.currentTimeMillis(),
+                            sourceApp = prefill?.sourceApp ?: "manual"
+                        )
                         onNavigateBack()
                     }
                 },
@@ -201,6 +224,38 @@ fun ExpenseEntryScreen(
             }
         }
         
+        // Delete Category confirmation
+        pendingDelete?.let { pd ->
+            val isSub = pd.parent != null
+            val effect = when {
+                pd.expenseCount == 0 -> "No expenses use it."
+                isSub -> "${pd.expenseCount} expense(s) will lose this sub-category."
+                else -> "${pd.expenseCount} expense(s) will move to \"${Category.FALLBACK}\"" +
+                    " and its sub-categories will be removed."
+            }
+            AlertDialog(
+                onDismissRequest = { pendingDelete = null },
+                title = { Text("Delete \"${pd.name}\"?") },
+                text = { Text(effect) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        viewModel.deleteCategory(pd.name, pd.parent)
+                        if (isSub) {
+                            if (subCategory == pd.name) subCategory = null
+                        } else if (category == pd.name) {
+                            category = Category.FALLBACK
+                        }
+                        pendingDelete = null
+                    }) {
+                        Text("Delete", color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingDelete = null }) { Text("Cancel") }
+                }
+            )
+        }
+
         // Add Category Dialog
         if (showAddCategoryDialog) {
             AlertDialog(
@@ -217,7 +272,7 @@ fun ExpenseEntryScreen(
                     Button(onClick = {
                         if (newCategoryName.isNotBlank()) {
                             viewModel.addCategory(newCategoryName, null)
-                            category = newCategoryName
+                            category = newCategoryName.trim()
                         }
                         showAddCategoryDialog = false
                         newCategoryName = ""
@@ -249,7 +304,7 @@ fun ExpenseEntryScreen(
                     Button(onClick = {
                         if (newCategoryName.isNotBlank()) {
                             viewModel.addCategory(newCategoryName, category)
-                            subCategory = newCategoryName
+                            subCategory = newCategoryName.trim()
                         }
                         showAddSubCategoryDialog = false
                         newCategoryName = ""

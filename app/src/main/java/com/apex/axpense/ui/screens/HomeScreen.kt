@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -29,10 +30,63 @@ import java.util.*
 fun HomeScreen(
     viewModel: ExpenseViewModel,
     onAddExpense: () -> Unit,
-    onScanClicked: () -> Unit
+    onScanClicked: () -> Unit,
+    notificationAccessEnabled: Boolean = true,
+    onEnableNotificationAccess: () -> Unit = {}
 ) {
     val expenses by viewModel.expenses.collectAsState()
     val totalSpent by viewModel.totalSpent.collectAsState()
+
+    var bannerDismissed by rememberSaveable { mutableStateOf(false) }
+    var showSignOutDialog by remember { mutableStateOf(false) }
+    var unsyncedCount by remember { mutableStateOf<Int?>(null) }
+    var signingOut by remember { mutableStateOf(false) }
+
+    if (showSignOutDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!signingOut) showSignOutDialog = false },
+            title = { Text("Sign out?") },
+            text = {
+                Text(
+                    if (signingOut) "Backing up your data..."
+                    else "Your data is backed up to your account, then removed from this device. Sign in again to restore it."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !signingOut,
+                    onClick = {
+                        signingOut = true
+                        viewModel.signOut(onUnsynced = {
+                            signingOut = false
+                            showSignOutDialog = false
+                            unsyncedCount = it
+                        })
+                    }
+                ) { Text("Sign out") }
+            },
+            dismissButton = {
+                TextButton(enabled = !signingOut, onClick = { showSignOutDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    unsyncedCount?.let { count ->
+        AlertDialog(
+            onDismissRequest = { unsyncedCount = null },
+            title = { Text("Backup incomplete") },
+            text = {
+                Text("$count expense(s) couldn't be uploaded (are you offline?). Signing out now will delete them permanently.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    unsyncedCount = null
+                    viewModel.signOut(force = true)
+                }) { Text("Sign out anyway", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { unsyncedCount = null }) { Text("Stay signed in") } }
+        )
+    }
 
     var selectedCategory by remember { mutableStateOf<String?>(null) }
 
@@ -95,6 +149,9 @@ fun HomeScreen(
                     TextButton(onClick = onScanClicked) {
                         Text("Scan SMS", color = MaterialTheme.colorScheme.onPrimaryContainer)
                     }
+                    TextButton(onClick = { signingOut = false; showSignOutDialog = true }) {
+                        Text("Sign out", color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -115,6 +172,27 @@ fun HomeScreen(
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            if (!notificationAccessEnabled && !bannerDismissed) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("Auto-detect expenses", fontWeight = FontWeight.Bold)
+                            Text(
+                                "Allow notification access and Axpense will spot new bank SMS and offer to log them.",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                                TextButton(onClick = { bannerDismissed = true }) { Text("Not now") }
+                                TextButton(onClick = onEnableNotificationAccess) { Text("Enable") }
+                            }
+                        }
+                    }
+                }
+            }
+
             item {
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(

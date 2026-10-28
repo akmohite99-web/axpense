@@ -10,130 +10,151 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.apex.axpense.theme.AxpenseTheme
 import com.apex.axpense.ui.ExpenseViewModel
 import com.apex.axpense.ui.screens.ExpenseEntryScreen
+import com.apex.axpense.ui.screens.ExpensePrefill
 import com.apex.axpense.ui.screens.HomeScreen
-import com.apex.axpense.theme.AxpenseTheme
-
 import com.apex.axpense.ui.screens.LoginScreen
-import com.google.firebase.auth.FirebaseAuth
+import com.apex.axpense.ui.screens.SmsScannerScreen
 
 class MainActivity : ComponentActivity() {
 
     private val viewModel: ExpenseViewModel by viewModels()
 
+    /** Set when the app is opened from an "expense detected" notification. */
+    private var pendingPrefill by mutableStateOf<ExpensePrefill?>(null)
+
+    private val notificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // Update user state initially
+
         viewModel.updateCurrentUser()
+        // On recreation (e.g. rotation) the intent is the same one we already handled.
+        if (savedInstanceState == null) consumePrefill(intent)
+        requestPostNotificationsIfNeeded()
 
         setContent {
             AxpenseTheme {
-                val navController = rememberNavController()
-                
-                // Handle intent extras from notification
-                var initialAmount by remember { mutableStateOf<Double?>(null) }
-                var initialDesc by remember { mutableStateOf<String?>(null) }
-                var startDestination by remember { mutableStateOf("home") }
-
-                LaunchedEffect(intent) {
-                    if (intent?.hasExtra("EXTRA_AMOUNT") == true) {
-                        initialAmount = intent.getDoubleExtra("EXTRA_AMOUNT", 0.0)
-                        initialDesc = intent.getStringExtra("EXTRA_DESC")
-                        startDestination = "add_expense"
-                        intent.removeExtra("EXTRA_AMOUNT") // Prevent reopening on recompose
-                    }
-                }
-
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val user by viewModel.user.collectAsState()
-
                     if (user == null) {
                         LoginScreen(onLoginSuccess = { viewModel.updateCurrentUser() })
-                    } else if (!isNotificationListenerEnabled()) {
-                        NotificationAccessPrompt {
-                            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-                        }
                     } else {
-                        NavHost(navController = navController, startDestination = startDestination) {
-                            composable("home") {
-                                HomeScreen(
-                                    viewModel = viewModel,
-                                    onAddExpense = { navController.navigate("add_expense") },
-                                    onScanClicked = { navController.navigate("scan_sms") }
-                                )
-                            }
-                            composable("scan_sms") {
-                                com.apex.axpense.ui.screens.SmsScannerScreen(
-                                    viewModel = viewModel,
-                                    onNavigateBack = { navController.popBackStack() }
-                                )
-                            }
-                            composable("add_expense") {
-                                ExpenseEntryScreen(
-                                    viewModel = viewModel,
-                                    initialAmount = initialAmount,
-                                    initialDesc = initialDesc,
-                                    onNavigateBack = {
-                                        initialAmount = null
-                                        initialDesc = null
-                                        navController.navigate("home") {
-                                            popUpTo("home") { inclusive = true }
-                                        }
-                                    }
-                                )
-                            }
-                        }
+                        AppNavHost()
                     }
                 }
             }
         }
     }
 
-    private fun isNotificationListenerEnabled(): Boolean {
-        val packageNames = NotificationManagerCompat.getEnabledListenerPackages(this)
-        return packageNames.contains(packageName)
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        consumePrefill(intent)
     }
-}
 
-@Composable
-fun NotificationAccessPrompt(onGrantAccess: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(
-            text = "Notification Access Required",
-            style = MaterialTheme.typography.headlineMedium,
-            textAlign = TextAlign.Center
+    private fun consumePrefill(intent: Intent?) {
+        if (intent?.hasExtra(EXTRA_AMOUNT) != true) return
+        pendingPrefill = ExpensePrefill(
+            amount = intent.getDoubleExtra(EXTRA_AMOUNT, 0.0),
+            description = intent.getStringExtra(EXTRA_DESC),
+            timestamp = intent.getLongExtra(EXTRA_TIMESTAMP, 0L).takeIf { it > 0 },
+            sourceApp = intent.getStringExtra(EXTRA_SOURCE)
         )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = "To automatically detect expenses from SMS and emails, Axpense needs access to your notifications.",
-            textAlign = TextAlign.Center
-        )
-        Spacer(modifier = Modifier.height(32.dp))
-        Button(onClick = onGrantAccess) {
-            Text("Grant Access")
+        intent.removeExtra(EXTRA_AMOUNT)
+    }
+
+    @Composable
+    private fun AppNavHost() {
+        val navController = rememberNavController()
+        var entryPrefill by remember { mutableStateOf<ExpensePrefill?>(null) }
+
+        // Re-check whenever the user comes back (e.g. from the system settings screen).
+        var listenerEnabled by remember { mutableStateOf(isNotificationListenerEnabled()) }
+        LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+            listenerEnabled = isNotificationListenerEnabled()
         }
+
+        NavHost(navController = navController, startDestination = "home") {
+            composable("home") {
+                HomeScreen(
+                    viewModel = viewModel,
+                    onAddExpense = {
+                        entryPrefill = null
+                        navController.navigate("add_expense")
+                    },
+                    onScanClicked = { navController.navigate("scan_sms") },
+                    notificationAccessEnabled = listenerEnabled,
+                    onEnableNotificationAccess = {
+                        startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                    }
+                )
+            }
+            composable("scan_sms") {
+                SmsScannerScreen(
+                    viewModel = viewModel,
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
+            composable("add_expense") {
+                // A new notification while this screen is open resets the form.
+                key(entryPrefill) {
+                    ExpenseEntryScreen(
+                        viewModel = viewModel,
+                        prefill = entryPrefill,
+                        onNavigateBack = {
+                            entryPrefill = null
+                            navController.popBackStack()
+                        }
+                    )
+                }
+            }
+        }
+
+        // Placed after NavHost so the graph is set before we navigate.
+        val prefill = pendingPrefill
+        LaunchedEffect(prefill) {
+            if (prefill != null) {
+                entryPrefill = prefill
+                pendingPrefill = null
+                navController.navigate("add_expense") { launchSingleTop = true }
+            }
+        }
+    }
+
+    private fun requestPostNotificationsIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    private fun isNotificationListenerEnabled(): Boolean =
+        NotificationManagerCompat.getEnabledListenerPackages(this).contains(packageName)
+
+    companion object {
+        const val EXTRA_AMOUNT = "EXTRA_AMOUNT"
+        const val EXTRA_DESC = "EXTRA_DESC"
+        const val EXTRA_TIMESTAMP = "EXTRA_TIMESTAMP"
+        const val EXTRA_SOURCE = "EXTRA_SOURCE"
     }
 }

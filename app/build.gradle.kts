@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.compose.compiler)
@@ -6,6 +8,18 @@ plugins {
   alias(libs.plugins.google.services)
 }
 
+// Release signing values live in local.properties (not in git) or env vars:
+//   axpense.storeFile, axpense.storePassword, axpense.keyAlias, axpense.keyPassword
+//   AXPENSE_STORE_FILE, AXPENSE_STORE_PASSWORD, AXPENSE_KEY_ALIAS, AXPENSE_KEY_PASSWORD
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+fun signingValue(prop: String, env: String): String? =
+    localProps.getProperty(prop) ?: System.getenv(env)
+
+val releaseStoreFile = signingValue("axpense.storeFile", "AXPENSE_STORE_FILE")
+
 android {
     namespace = "com.apex.axpense"
     compileSdk = 36
@@ -13,23 +27,25 @@ android {
         applicationId = "com.apex.axpense"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
     }
 
     signingConfigs {
-        create("release") {
-            storeFile = file("../axpense-release-key.jks")
-            storePassword = "password123"
-            keyAlias = "axpense-key"
-            keyPassword = "password123"
+        if (releaseStoreFile != null) {
+            create("release") {
+                storeFile = rootProject.file(releaseStoreFile)
+                storePassword = signingValue("axpense.storePassword", "AXPENSE_STORE_PASSWORD")
+                keyAlias = signingValue("axpense.keyAlias", "AXPENSE_KEY_ALIAS")
+                keyPassword = signingValue("axpense.keyPassword", "AXPENSE_KEY_PASSWORD")
+            }
         }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = signingConfigs.findByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
@@ -60,6 +76,11 @@ android {
 
 kotlin {
     jvmToolchain(17)
+}
+
+ksp {
+    // Export Room schemas so future migrations can be written and tested.
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {
@@ -114,4 +135,6 @@ dependencies {
   implementation(libs.firebase.auth)
   implementation(libs.firebase.firestore)
   implementation("androidx.work:work-runtime-ktx:2.9.0")
+  // Firebase pulls in Fragment 1.1.0, which fails the release lint check for the ActivityResult API.
+  implementation("androidx.fragment:fragment:1.8.9")
 }

@@ -40,11 +40,11 @@ class ExpenseNotificationService : NotificationListenerService() {
         
         if (amount != null) {
             // It's a detected expense! Notify the user to categorize it.
-            showExpenseNotification(amount, text, packageName)
+            showExpenseNotification(amount, text, packageName, sbn.postTime)
         }
     }
 
-    private fun showExpenseNotification(amount: Double, originalText: String, sourceApp: String) {
+    private fun showExpenseNotification(amount: Double, originalText: String, sourceApp: String, postedAt: Long) {
         val channelId = "axpense_notifications_silent"
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -64,6 +64,8 @@ class ExpenseNotificationService : NotificationListenerService() {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
             putExtra("EXTRA_AMOUNT", amount)
             putExtra("EXTRA_DESC", originalText)
+            putExtra("EXTRA_TIMESTAMP", postedAt)
+            putExtra("EXTRA_SOURCE", sourceApp)
         }
 
         val notificationId = System.currentTimeMillis().toInt()
